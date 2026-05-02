@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { onSnapshot } from "firebase/firestore";
+import { onSnapshot, getDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import {
   vendorDocumentsCol,
   vendorDoc,
+  pmRelationshipsCol,
+  userDoc,
   customDocumentsCol,
   addCustomDocument,
   deleteCustomDocument,
@@ -17,7 +19,8 @@ import {
   updateVendorContact,
   getVendorContact,
   getVendorProjects,
-  getVendorClients,
+  updateVendorProjectStatus,
+  dropProject,
   parseZipCodes,
 } from "../lib/firestore";
 import type {
@@ -25,6 +28,8 @@ import type {
   VendorPrivateContact,
   Invite,
   Project,
+  PmRelationship,
+  VendorProjectStatus,
   CustomDocument,
 } from "../lib/firestore";
 import { DOC_TYPE_ORDER, DOC_TYPE_SCHEMAS } from "../lib/docTypes";
@@ -36,7 +41,7 @@ import LiabilityFooter from "../components/LiabilityFooter";
 import { SERVICE_CATEGORIES, getCategoryLabel } from "../lib/categories";
 import type { ServiceCategory } from "../lib/categories";
 
-type Tab = "documents" | "projects" | "clients" | "profile";
+type Tab = "documents" | "projects" | "clients";
 
 function formatDate(ts: { seconds: number } | null | undefined): string {
   if (!ts) return "—";
@@ -55,10 +60,9 @@ function isExpired(ts: { seconds: number } | null | undefined): boolean {
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
 const NAV: { id: Tab; label: string; icon: string }[] = [
-  { id: "documents", label: "Documents", icon: "📄" },
+  { id: "documents", label: "Profile & Documents", icon: "📄" },
   { id: "projects", label: "Projects", icon: "🏗️" },
   { id: "clients", label: "Clients", icon: "👥" },
-  { id: "profile", label: "Profile", icon: "⚙️" },
 ];
 
 function Sidebar({
@@ -531,11 +535,15 @@ function ProjectsPane({
   projects,
   onAccept,
   onDecline,
+  onDrop,
+  onStatusChange,
 }: {
   invites: Array<Invite & { id: string }>;
-  projects: Array<Project & { id: string }>;
+  projects: Array<Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus }>;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
+  onDrop: (projectId: string, inviteId: string) => Promise<void>;
+  onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
 }) {
   const pending = invites.filter((i) => i.status === "pending");
 
@@ -656,37 +664,19 @@ function ProjectsPane({
                 <tr>
                   <Th>Project</Th>
                   <Th>Address</Th>
-                  <Th>Status</Th>
-                  <Th>Created</Th>
+                  <Th>Project Status</Th>
+                  <Th>My Status</Th>
+                  <Th></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">
                 {projects.map((project) => (
-                  <tr
+                  <ProjectRow
                     key={project.id}
-                    className="bg-surface hover:bg-surface-container-low transition-colors"
-                  >
-                    <td className="px-md py-sm text-body-md text-on-surface font-semibold">
-                      {project.name}
-                    </td>
-                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
-                      {project.address}
-                    </td>
-                    <td className="px-md py-sm">
-                      <span
-                        className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
-                          project.status === "active"
-                            ? "bg-tier-2-bg text-on-surface"
-                            : "bg-surface-container text-on-surface-variant"
-                        }`}
-                      >
-                        {project.status === "active" ? "Active" : "Closed"}
-                      </span>
-                    </td>
-                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
-                      {formatDate(project.createdAt)}
-                    </td>
-                  </tr>
+                    project={project}
+                    onDrop={onDrop}
+                    onStatusChange={onStatusChange}
+                  />
                 ))}
               </tbody>
             </table>
@@ -694,6 +684,119 @@ function ProjectsPane({
         )}
       </section>
     </div>
+  );
+}
+
+const VENDOR_STATUS_OPTIONS: { value: VendorProjectStatus; label: string; classes: string }[] = [
+  { value: "active", label: "Active", classes: "bg-green-100 text-green-800" },
+  { value: "on_hold", label: "On Hold", classes: "bg-yellow-100 text-yellow-800" },
+  { value: "completed", label: "Completed", classes: "bg-surface-container text-on-surface-variant" },
+];
+
+function ProjectRow({
+  project,
+  onDrop,
+  onStatusChange,
+}: {
+  project: Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus };
+  onDrop: (projectId: string, inviteId: string) => Promise<void>;
+  onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
+}) {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  const statusOption = VENDOR_STATUS_OPTIONS.find((o) => o.value === project.vendorStatus)
+    ?? VENDOR_STATUS_OPTIONS[0];
+
+  async function handleDrop() {
+    setDropping(true);
+    await onDrop(project.id, project.inviteId);
+    setDropping(false);
+    setShowConfirm(false);
+  }
+
+  async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    setUpdatingStatus(true);
+    await onStatusChange(project.id, e.target.value as VendorProjectStatus);
+    setUpdatingStatus(false);
+  }
+
+  return (
+    <>
+      <tr className="bg-surface hover:bg-surface-container-low transition-colors">
+        <td className="px-md py-sm text-body-md text-on-surface font-semibold">
+          {project.name}
+        </td>
+        <td className="px-md py-sm text-body-sm text-on-surface-variant">
+          {project.address}
+        </td>
+        <td className="px-md py-sm">
+          <span
+            className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
+              project.status === "active"
+                ? "bg-green-100 text-green-800"
+                : "bg-surface-container text-on-surface-variant"
+            }`}
+          >
+            {project.status === "active" ? "Active" : "Closed"}
+          </span>
+        </td>
+        <td className="px-md py-sm">
+          <select
+            value={project.vendorStatus}
+            onChange={handleStatusChange}
+            disabled={updatingStatus}
+            className={`text-body-sm px-sm py-xs rounded font-semibold border-0 cursor-pointer ${statusOption.classes} disabled:opacity-60`}
+          >
+            {VENDOR_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </td>
+        <td className="px-md py-sm text-right">
+          <button
+            className="text-body-sm text-error hover:underline"
+            onClick={() => setShowConfirm(true)}
+          >
+            Drop
+          </button>
+        </td>
+      </tr>
+
+      {/* Inline confirmation row */}
+      {showConfirm && (
+        <tr key={`${project.id}-confirm`}>
+          <td
+            colSpan={5}
+            className="px-lg py-md bg-error-container border-t border-outline-variant"
+          >
+            <p className="text-body-md text-on-surface font-semibold mb-sm">
+              Drop "{project.name}"?
+            </p>
+            <p className="text-body-sm text-on-surface-variant mb-md">
+              You will be removed from this project. This cannot be undone.
+            </p>
+            <div className="flex gap-sm">
+              <button
+                className="btn-primary bg-error hover:bg-error text-white"
+                onClick={handleDrop}
+                disabled={dropping}
+              >
+                {dropping ? "Dropping…" : "Yes, drop project"}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setShowConfirm(false)}
+                disabled={dropping}
+              >
+                Cancel
+              </button>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -1031,7 +1134,7 @@ export default function VendorDashboard() {
   const [profile, setProfile] = useState<VendorPublicProfile | null>(null);
   const [contact, setContact] = useState<VendorPrivateContact | null>(null);
   const [invites, setInvites] = useState<Array<Invite & { id: string }>>([]);
-  const [projects, setProjects] = useState<Array<Project & { id: string }>>([]);
+  const [projects, setProjects] = useState<Array<Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus }>>([]);
   const [clients, setClients] = useState<
     Array<{
       pmUid: string;
@@ -1071,23 +1174,35 @@ export default function VendorDashboard() {
     });
   }, [uid]);
 
-  // Contact, invites, projects, clients
+  // Contact, invites, projects
   useEffect(() => {
     if (!uid) return;
     getVendorContact(uid).then(setContact);
     getVendorInvites(uid).then(setInvites);
     getVendorProjects(uid).then(setProjects);
-    getVendorClients(uid).then(
-      (c) =>
-        setClients(
-          c as Array<{
-            pmUid: string;
-            displayName: string;
-            email: string;
-            relationship: { firstLinkedAt: { seconds: number }; workOrdersPaused: boolean };
-          }>
-        )
-    );
+  }, [uid]);
+
+  // Live clients via pmRelationships snapshot
+  useEffect(() => {
+    if (!uid) return;
+    return onSnapshot(pmRelationshipsCol(uid), async (snap) => {
+      const entries = snap.docs.map((d) => [d.id, d.data() as PmRelationship] as const);
+      const resolved = await Promise.all(
+        entries.map(async ([pmUid, relationship]) => {
+          const userSnap = await getDoc(userDoc(pmUid));
+          const data = userSnap.exists()
+            ? (userSnap.data() as { displayName: string; email: string })
+            : null;
+          return {
+            pmUid,
+            displayName: data?.displayName ?? "Unknown",
+            email: data?.email ?? "",
+            relationship,
+          };
+        })
+      );
+      setClients(resolved as typeof clients);
+    });
   }, [uid]);
 
   async function handleAccept(inviteId: string) {
@@ -1096,23 +1211,25 @@ export default function VendorDashboard() {
       prev.map((i) => (i.id === inviteId ? { ...i, status: "accepted" } : i))
     );
     getVendorProjects(uid).then(setProjects);
-    getVendorClients(uid).then(
-      (c) =>
-        setClients(
-          c as Array<{
-            pmUid: string;
-            displayName: string;
-            email: string;
-            relationship: { firstLinkedAt: { seconds: number }; workOrdersPaused: boolean };
-          }>
-        )
-    );
   }
 
   async function handleDecline(inviteId: string) {
     await declineInvite(inviteId);
     setInvites((prev) =>
       prev.map((i) => (i.id === inviteId ? { ...i, status: "declined" } : i))
+    );
+  }
+
+  async function handleDropProject(projectId: string, inviteId: string) {
+    await dropProject(projectId, uid, inviteId);
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setInvites((prev) => prev.map((i) => (i.id === inviteId ? { ...i, status: "dropped" } : i)));
+  }
+
+  async function handleUpdateProjectStatus(projectId: string, status: VendorProjectStatus) {
+    await updateVendorProjectStatus(projectId, uid, status);
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, vendorStatus: status } : p))
     );
   }
 
@@ -1124,10 +1241,9 @@ export default function VendorDashboard() {
   const pendingCount = invites.filter((i) => i.status === "pending").length;
 
   const TAB_TITLES: Record<Tab, string> = {
-    documents: "Compliance Documents",
+    documents: "Profile & Documents",
     projects: "My Projects",
     clients: "Property Managers",
-    profile: "Business Profile",
   };
 
   return (
@@ -1153,7 +1269,17 @@ export default function VendorDashboard() {
 
         {/* Tab content */}
         <main className="flex-1 px-xl py-lg max-w-5xl w-full">
-          {tab === "documents" && <DocumentsPane uid={uid} docs={docs} customDocs={customDocs} />}
+          {tab === "documents" && (
+            <div className="space-y-xl">
+              {profile && (
+                <>
+                  <ProfilePane uid={uid} profile={profile} contact={contact} />
+                  <hr className="border-outline-variant" />
+                </>
+              )}
+              <DocumentsPane uid={uid} docs={docs} customDocs={customDocs} />
+            </div>
+          )}
 
           {tab === "projects" && (
             <ProjectsPane
@@ -1161,14 +1287,12 @@ export default function VendorDashboard() {
               projects={projects}
               onAccept={handleAccept}
               onDecline={handleDecline}
+              onDrop={handleDropProject}
+              onStatusChange={handleUpdateProjectStatus}
             />
           )}
 
           {tab === "clients" && <ClientsPane clients={clients} />}
-
-          {tab === "profile" && profile && (
-            <ProfilePane uid={uid} profile={profile} contact={contact} />
-          )}
 
           <LiabilityFooter />
         </main>

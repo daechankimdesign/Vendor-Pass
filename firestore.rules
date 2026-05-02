@@ -120,6 +120,9 @@ service cloud.firestore {
       allow read, write: if isSignedIn() &&
         get(/databases/$(database)/documents/projects/$(projectId)).data.pmUid == request.auth.uid;
       allow read: if isOwner(vendorUid);
+      allow update: if isOwner(vendorUid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vendorStatus']);
+      allow delete: if isOwner(vendorUid);
       allow read: if isAdmin();
     }
 

@@ -11,13 +11,28 @@ interface Props {
   onSaved: () => void;
 }
 
+/** Convert any date string to YYYY-MM-DD for <input type="date"> */
+function toDateInputValue(raw: string): string {
+  if (!raw) return "";
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const parsed = Date.parse(raw);
+  if (isNaN(parsed)) return "";
+  const d = new Date(parsed);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function ExtractionForm({ vendorUid, docType, document, onSaved }: Props) {
   const schema = DOC_TYPE_SCHEMAS[docType];
 
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const f of schema.fields) {
-      initial[f.key] = document.extractedFields?.[f.key]?.value ?? "";
+      const raw = document.extractedFields?.[f.key]?.value ?? "";
+      initial[f.key] = f.type === "date" ? toDateInputValue(raw) : raw;
     }
     return initial;
   });
@@ -96,6 +111,7 @@ export default function ExtractionForm({ vendorUid, docType, document, onSaved }
                 {field.required && <span className="text-error ml-xs">*</span>}
               </label>
               <input
+                type={field.type === "date" ? "date" : "text"}
                 className={`input ${field.mono ? "font-mono" : ""} ${
                   isRequiredEmpty ? "input-error" : ""
                 }`}
@@ -103,7 +119,7 @@ export default function ExtractionForm({ vendorUid, docType, document, onSaved }
                 onChange={(e) =>
                   setFields((prev) => ({ ...prev, [field.key]: e.target.value }))
                 }
-                placeholder={isEmpty ? "Required — enter value" : ""}
+                placeholder={field.type !== "date" && isEmpty ? "Required — enter value" : undefined}
               />
               {isRequiredEmpty && (
                 <p className="mt-xs text-body-sm text-error">This field is required.</p>

@@ -31,6 +31,7 @@ export interface FieldSchema {
   required: boolean;
   /** Render using the data-mono typography token (license numbers, TINs, policy numbers) */
   mono: boolean;
+  type?: "text" | "date";
 }
 
 export const DOC_TYPE_SCHEMAS: Record<DocType, DocTypeSchema> = {
@@ -41,8 +42,8 @@ export const DOC_TYPE_SCHEMAS: Record<DocType, DocTypeSchema> = {
       { key: "business_legal_name", label: "Business Legal Name", required: true, mono: false },
       { key: "license_number", label: "License Number", required: true, mono: true },
       { key: "issuing_authority", label: "Issuing Authority", required: true, mono: false },
-      { key: "issue_date", label: "Issue Date", required: true, mono: false },
-      { key: "expiration_date", label: "Expiration Date", required: true, mono: false },
+      { key: "issue_date", label: "Issue Date", required: true, mono: false, type: "date" },
+      { key: "expiration_date", label: "Expiration Date", required: true, mono: false, type: "date" },
     ],
   },
   w9: {
@@ -53,7 +54,7 @@ export const DOC_TYPE_SCHEMAS: Record<DocType, DocTypeSchema> = {
       { key: "business_name", label: "Business Name (if different)", required: false, mono: false },
       { key: "tin_ein", label: "TIN / EIN", required: true, mono: true },
       { key: "address", label: "Address", required: true, mono: false },
-      { key: "signature_date", label: "Signature Date", required: true, mono: false },
+      { key: "signature_date", label: "Signature Date", required: true, mono: false, type: "date" },
     ],
   },
   coi: {
@@ -74,6 +75,7 @@ export const DOC_TYPE_SCHEMAS: Record<DocType, DocTypeSchema> = {
         label: "Policy Expiration Date",
         required: true,
         mono: false,
+        type: "date",
       },
       { key: "additional_insured", label: "Additional Insured", required: false, mono: false },
     ],
