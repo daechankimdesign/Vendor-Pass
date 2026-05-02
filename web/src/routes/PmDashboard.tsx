@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   getPmProjects,
@@ -9,12 +9,12 @@ import {
   toggleWorkOrdersPaused,
   pmRelationshipDoc,
   createProject,
+  updateProject,
 } from "../lib/firestore";
 import type { Project, VendorPublicProfile, PmRelationship } from "../lib/firestore";
 import type { VendorDocument, DocType } from "../lib/docTypes";
 import { DOC_TYPE_ORDER, computeOverallTier } from "../lib/docTypes";
 import { SearchPane } from "./Search";
-import ProjectCard from "../components/ProjectCard";
 import TierBadge from "../components/TierBadge";
 import InviteVendorModal from "../components/InviteVendorModal";
 import LiabilityFooter from "../components/LiabilityFooter";
@@ -29,80 +29,89 @@ interface RosterRow {
   activeProjectCount: number;
 }
 
-export default function PmDashboard() {
-  const { profile, logOut } = useAuth();
-  const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const tab = (params.get("tab") as Tab) ?? "search";
+function formatDate(ts: { seconds: number } | null | undefined): string {
+  if (!ts) return "—";
+  return new Date(ts.seconds * 1000).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-  function setTab(t: Tab) {
-    setParams({ tab: t });
-  }
+// ── Sidebar ───────────────────────────────────────────────────────────────────
 
-  async function handleSignOut() {
-    await logOut();
-    navigate("/login", { replace: true });
-  }
+const NAV: { id: Tab; label: string; icon: string }[] = [
+  { id: "search", label: "Search Vendors", icon: "🔍" },
+  { id: "projects", label: "Projects", icon: "🏗️" },
+  { id: "roster", label: "Roster", icon: "👥" },
+];
 
+function Sidebar({
+  tab,
+  setTab,
+  displayName,
+  onSignOut,
+}: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  displayName: string;
+  onSignOut: () => void;
+}) {
   return (
-    <div className="min-h-screen bg-surface">
+    <aside className="w-60 flex-shrink-0 bg-surface-container-lowest border-r border-outline-variant flex flex-col min-h-screen">
+      {/* Logo */}
+      <div className="px-lg py-md border-b border-outline-variant">
+        <Link to="/" className="text-h2 text-on-surface font-bold block">
+          VendorPass.
+        </Link>
+      </div>
+
+      {/* PM info */}
+      <div className="px-lg py-md border-b border-outline-variant">
+        <p className="text-body-md text-on-surface font-semibold truncate">
+          {displayName || "Property Manager"}
+        </p>
+        <p className="text-body-sm text-on-surface-variant mt-xs">Property Manager</p>
+      </div>
+
       {/* Nav */}
-      <header className="border-b border-outline-variant bg-surface-container-lowest">
-        <div className="page-container flex items-center justify-between h-14">
-          <span className="text-h2 text-on-surface">VendorPass.</span>
-          <div className="flex items-center gap-md">
-            <span className="text-body-sm text-on-surface-variant hidden sm:block">
-              {profile?.displayName}
-            </span>
-            <button className="btn-tertiary text-body-sm" onClick={handleSignOut}>
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+      <nav className="flex-1 px-sm py-md space-y-xs">
+        {NAV.map(({ id, label, icon }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`w-full flex items-center gap-sm px-md py-sm rounded text-body-md transition-colors text-left ${
+              tab === id
+                ? "bg-primary-container text-on-surface font-semibold"
+                : "text-on-surface-variant hover:bg-surface-container"
+            }`}
+          >
+            <span>{icon}</span>
+            <span className="flex-1">{label}</span>
+          </button>
+        ))}
+      </nav>
 
-      {/* Tabs */}
-      <div className="border-b border-outline-variant bg-surface-container-lowest">
-        <div className="page-container flex gap-md">
-          {(["search", "projects", "roster"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              className={`py-sm px-md text-body-md border-b-2 transition-colors -mb-px ${
-                tab === t
-                  ? "border-primary-container text-on-surface"
-                  : "border-transparent text-on-surface-variant hover:text-on-surface"
-              }`}
-              onClick={() => setTab(t)}
-            >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
+      {/* Footer */}
+      <div className="px-lg py-md border-t border-outline-variant">
+        <button
+          className="text-body-sm text-on-surface-variant hover:text-on-surface"
+          onClick={onSignOut}
+        >
+          Sign out
+        </button>
       </div>
-
-      <div className="page-container py-lg">
-        {tab === "search" && (
-          <SearchPane />
-        )}
-        {tab === "projects" && profile && (
-          <ProjectsTab pmUid={profile.uid} />
-        )}
-        {tab === "roster" && profile && (
-          <RosterTab pmUid={profile.uid} />
-        )}
-
-        <LiabilityFooter />
-      </div>
-    </div>
+    </aside>
   );
 }
 
-// ── Projects Tab ─────────────────────────────────────────────────────────────
+// ── Projects tab ──────────────────────────────────────────────────────────────
 
 function ProjectsTab({ pmUid }: { pmUid: string }) {
   const [projects, setProjects] = useState<Array<Project & { id: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     getPmProjects(pmUid).then((p) => {
@@ -113,45 +122,130 @@ function ProjectsTab({ pmUid }: { pmUid: string }) {
 
   async function handleCreate(data: Omit<Project, "pmUid" | "createdAt">) {
     const id = await createProject(pmUid, data);
-    const newProject = { id, pmUid, ...data, createdAt: { seconds: Date.now() / 1000, nanoseconds: 0 } as never };
+    const newProject = {
+      id,
+      pmUid,
+      ...data,
+      createdAt: { seconds: Date.now() / 1000, nanoseconds: 0 } as never,
+    };
     setProjects((prev) => [newProject, ...prev]);
     setShowCreate(false);
   }
 
+  async function handleUpdate(id: string, data: Omit<Project, "pmUid" | "createdAt">) {
+    await updateProject(id, data);
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
+    setEditingId(null);
+  }
+
+  const active = projects.filter((p) => p.status === "active");
+  const closed = projects.filter((p) => p.status === "closed");
+
   return (
     <div className="space-y-lg">
       <div className="flex items-center justify-between">
-        <h2 className="text-h1 text-on-surface">Projects</h2>
+        <div className="grid grid-cols-2 gap-md">
+          <StatCard label="Active" value={active.length} accent="text-primary" />
+          <StatCard label="Closed" value={closed.length} accent="text-on-surface-variant" />
+        </div>
         <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
           {showCreate ? "Cancel" : "+ New Project"}
         </button>
       </div>
 
-      {showCreate && <CreateProjectForm onSubmit={handleCreate} />}
+      {showCreate && (
+        <ProjectForm onSubmit={handleCreate} onCancel={() => setShowCreate(false)} />
+      )}
 
       {loading ? (
         <p className="text-body-md text-on-surface-variant">Loading…</p>
       ) : projects.length === 0 ? (
-        <p className="text-body-md text-on-surface-variant">
-          No projects yet.{" "}
-          <button className="btn-tertiary" onClick={() => setShowCreate(true)}>
-            Create your first project.
-          </button>
-        </p>
+        <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
+          No projects yet.
+        </div>
       ) : (
-        <div className="space-y-sm">
-          {projects.map((p) => <ProjectCard key={p.id} project={p} />)}
+        <div className="border border-outline-variant rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-surface-container">
+              <tr>
+                <Th>Project</Th>
+                <Th>Address</Th>
+                <Th>Zip</Th>
+                <Th>Status</Th>
+                <Th>Created</Th>
+                <Th></Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant">
+              {projects.map((p) =>
+                editingId === p.id ? (
+                  <tr key={p.id}>
+                    <td colSpan={6} className="px-md py-md bg-surface-container-low">
+                      <ProjectForm
+                        initial={p}
+                        onSubmit={(data) => handleUpdate(p.id, data)}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={p.id} className="bg-surface hover:bg-surface-container-low transition-colors">
+                    <td className="px-md py-sm text-body-md text-on-surface font-semibold">
+                      {p.name}
+                    </td>
+                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                      {p.address || "—"}
+                    </td>
+                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                      {p.zipCode}
+                    </td>
+                    <td className="px-md py-sm">
+                      <span
+                        className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
+                          p.status === "active"
+                            ? "bg-tier-2-bg text-on-surface"
+                            : "bg-surface-container text-on-surface-variant"
+                        }`}
+                      >
+                        {p.status === "active" ? "Active" : "Closed"}
+                      </span>
+                    </td>
+                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                      {formatDate(p.createdAt)}
+                    </td>
+                    <td className="px-md py-sm">
+                      <button
+                        className="btn-tertiary text-body-sm"
+                        onClick={() => setEditingId(p.id)}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                )
+              )}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   );
 }
 
-function CreateProjectForm({ onSubmit }: { onSubmit: (data: Omit<Project, "pmUid" | "createdAt">) => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [zip, setZip] = useState("");
-  const [description, setDescription] = useState("");
+function ProjectForm({
+  initial,
+  onSubmit,
+  onCancel,
+}: {
+  initial?: Project & { id: string };
+  onSubmit: (data: Omit<Project, "pmUid" | "createdAt">) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [address, setAddress] = useState(initial?.address ?? "");
+  const [zip, setZip] = useState(initial?.zipCode ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [status, setStatus] = useState<"active" | "closed">(initial?.status ?? "active");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -162,25 +256,59 @@ function CreateProjectForm({ onSubmit }: { onSubmit: (data: Omit<Project, "pmUid
     setSaving(true);
     setError(null);
     try {
-      await onSubmit({ name: name.trim(), address: address.trim(), zipCode: zip, status: "active", startDate: null, endDate: null, description: description.trim() });
-    } catch { setError("Failed to create project."); }
-    finally { setSaving(false); }
+      await onSubmit({
+        name: name.trim(),
+        address: address.trim(),
+        zipCode: zip,
+        description: description.trim(),
+        status,
+        startDate: null,
+        endDate: null,
+      });
+    } catch {
+      setError("Failed to save project.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <form onSubmit={handleSubmit} className="card space-y-md">
-      <h3 className="text-h2 text-on-surface">New Project</h3>
-      <Field label="Project name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <Field label="Address"><input className="input" value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
-      <Field label="Zip code" required><input className="input" maxLength={5} value={zip} onChange={(e) => setZip(e.target.value)} placeholder="90210" /></Field>
-      <Field label="Description"><textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+      <h3 className="text-h2 text-on-surface">{initial ? "Edit Project" : "New Project"}</h3>
+      <FormField label="Project name" required>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+      </FormField>
+      <FormField label="Address">
+        <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} />
+      </FormField>
+      <FormField label="Zip code" required>
+        <input className="input" maxLength={5} value={zip} onChange={(e) => setZip(e.target.value)} placeholder="90210" />
+      </FormField>
+      <FormField label="Description">
+        <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </FormField>
+      {initial && (
+        <FormField label="Status">
+          <select className="input" value={status} onChange={(e) => setStatus(e.target.value as "active" | "closed")}>
+            <option value="active">Active</option>
+            <option value="closed">Closed</option>
+          </select>
+        </FormField>
+      )}
       {error && <p className="text-body-sm text-error">{error}</p>}
-      <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Creating…" : "Create Project"}</button>
+      <div className="flex gap-sm">
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? "Saving…" : initial ? "Save Changes" : "Create Project"}
+        </button>
+        <button type="button" className="btn-secondary" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
 
-// ── Roster Tab ────────────────────────────────────────────────────────────────
+// ── Roster tab ─────────────────────────────────────────────────────────────────
 
 function RosterTab({ pmUid }: { pmUid: string }) {
   const [rows, setRows] = useState<RosterRow[]>([]);
@@ -201,9 +329,7 @@ function RosterTab({ pmUid }: { pmUid: string }) {
           ]);
           if (!profile) return null;
 
-          const activeProjects = projects.filter(
-            (p) => p.status === "active"
-          );
+          const activeProjects = projects.filter((p) => p.status === "active");
           const activeCount = (
             await Promise.all(
               activeProjects.map(async (p) => {
@@ -232,6 +358,13 @@ function RosterTab({ pmUid }: { pmUid: string }) {
     load();
   }, [pmUid]);
 
+  useEffect(() => {
+    getPmProjects(pmUid).then((projects) => {
+      const active = projects.find((p) => p.status === "active");
+      if (active) setInviteProjectId(active.id);
+    });
+  }, [pmUid]);
+
   async function handleTogglePause(vendorUid: string, current: boolean) {
     await toggleWorkOrdersPaused(vendorUid, pmUid, !current);
     setRows((prev) =>
@@ -243,68 +376,72 @@ function RosterTab({ pmUid }: { pmUid: string }) {
     );
   }
 
-  // Roster needs a projectId to invite — use first active project or prompt
-  useEffect(() => {
-    getPmProjects(pmUid).then((projects) => {
-      const active = projects.find((p) => p.status === "active");
-      if (active) setInviteProjectId(active.id);
-    });
-  }, [pmUid]);
+  const verified = rows.filter((r) => computeOverallTier(r.docs) === "verified").length;
+  const selfVerified = rows.filter((r) => computeOverallTier(r.docs) === "self_verified").length;
+  const unverified = rows.filter((r) => computeOverallTier(r.docs) === "unverified").length;
 
   return (
-    <div className="space-y-md">
+    <div className="space-y-lg">
       <div className="flex items-center justify-between">
-        <h2 className="text-h1 text-on-surface">Roster</h2>
+        <div className="grid grid-cols-3 gap-md">
+          <StatCard label="Verified" value={verified} accent="text-primary" />
+          <StatCard label="Self-Verified" value={selfVerified} accent="text-on-surface" />
+          <StatCard label="Unverified" value={unverified} accent="text-on-surface-variant" />
+        </div>
         <button className="btn-secondary" onClick={() => setInviteOpen(true)}>
-          Invite Vendor by Email
+          Invite by Email
         </button>
       </div>
 
       {loading ? (
         <p className="text-body-md text-on-surface-variant">Loading roster…</p>
       ) : rows.length === 0 ? (
-        <p className="text-body-md text-on-surface-variant">
-          No vendors yet. Invite vendors from the Search tab or by email.
-        </p>
+        <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
+          No vendors yet. Invite vendors from Search or by email.
+        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
+        <div className="border border-outline-variant rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-surface-container">
               <tr>
-                <th className="th">Vendor</th>
-                <th className="th">License</th>
-                <th className="th">W-9</th>
-                <th className="th">COI</th>
-                <th className="th">Overall</th>
-                <th className="th">Projects</th>
-                <th className="th">Work orders</th>
-                <th className="th"></th>
+                <Th>Vendor</Th>
+                <Th>License</Th>
+                <Th>W-9</Th>
+                <Th>COI</Th>
+                <Th>Overall</Th>
+                <Th>Projects</Th>
+                <Th>Work Orders</Th>
+                <Th></Th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-outline-variant">
               {rows.map((row) => {
                 const overallTier = computeOverallTier(row.docs);
                 return (
-                  <tr key={row.uid} className="tr-hover">
-                    <td className="td">
-                      <Link to={`/vendors/${row.uid}`} className="text-primary hover:underline">
+                  <tr key={row.uid} className="bg-surface hover:bg-surface-container-low transition-colors">
+                    <td className="px-md py-sm text-body-md text-on-surface font-semibold">
+                      <Link to={`/vendors/${row.uid}`} className="hover:underline">
                         {row.profile.businessName}
                       </Link>
                     </td>
                     {DOC_TYPE_ORDER.map((dt) => (
-                      <td key={dt} className="td">
+                      <td key={dt} className="px-md py-sm">
                         <TierBadge tier={row.docs[dt]?.tier ?? null} />
                       </td>
                     ))}
-                    <td className="td"><TierBadge tier={overallTier} /></td>
-                    <td className="td text-on-surface-variant">{row.activeProjectCount}</td>
-                    <td className="td">
+                    <td className="px-md py-sm">
+                      <TierBadge tier={overallTier} />
+                    </td>
+                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                      {row.activeProjectCount}
+                    </td>
+                    <td className="px-md py-sm">
                       <button
-                        className={`text-body-sm ${
+                        className={`text-body-sm font-semibold px-sm py-xs rounded ${
                           row.relationship?.workOrdersPaused
-                            ? "text-error"
-                            : "text-on-surface-variant"
-                        } hover:underline`}
+                            ? "bg-error-container text-error"
+                            : "bg-tier-2-bg text-on-surface"
+                        }`}
                         onClick={() =>
                           handleTogglePause(row.uid, row.relationship?.workOrdersPaused ?? false)
                         }
@@ -312,7 +449,7 @@ function RosterTab({ pmUid }: { pmUid: string }) {
                         {row.relationship?.workOrdersPaused ? "Paused" : "Active"}
                       </button>
                     </td>
-                    <td className="td">
+                    <td className="px-md py-sm">
                       <Link to={`/vendors/${row.uid}`} className="btn-tertiary text-body-sm">
                         View
                       </Link>
@@ -345,13 +482,103 @@ function RosterTab({ pmUid }: { pmUid: string }) {
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+// ── Shared primitives ─────────────────────────────────────────────────────────
+
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div className="card text-center">
+      <p className={`text-display font-bold ${accent}`}>{value}</p>
+      <p className="text-label-caps uppercase text-on-surface-variant mt-xs">{label}</p>
+    </div>
+  );
+}
+
+function Th({ children }: { children: React.ReactNode }) {
+  return (
+    <th className="px-md py-sm text-label-caps uppercase text-on-surface-variant text-left font-semibold">
+      {children}
+    </th>
+  );
+}
+
+function FormField({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label className="block text-label-caps uppercase text-on-surface-variant mb-xs">
-        {label}{required && <span className="text-error ml-xs">*</span>}
+        {label}
+        {required && <span className="text-error ml-xs">*</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+// ── Root component ────────────────────────────────────────────────────────────
+
+export default function PmDashboard() {
+  const { profile, logOut } = useAuth();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab = (params.get("tab") as Tab) ?? "search";
+
+  function setTab(t: Tab) {
+    setParams({ tab: t });
+  }
+
+  async function handleSignOut() {
+    await logOut();
+    navigate("/login", { replace: true });
+  }
+
+  const TAB_TITLES: Record<Tab, string> = {
+    search: "Search Vendors",
+    projects: "Projects",
+    roster: "Roster",
+  };
+
+  return (
+    <div className="flex min-h-screen bg-surface">
+      <Sidebar
+        tab={tab}
+        setTab={setTab}
+        displayName={profile?.displayName ?? ""}
+        onSignOut={handleSignOut}
+      />
+
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Page header */}
+        <header className="border-b border-outline-variant bg-surface-container-lowest px-xl py-md flex items-center justify-between">
+          <div>
+            <p className="text-body-sm text-on-surface-variant">
+              VendorPass → {TAB_TITLES[tab]}
+            </p>
+            <h1 className="text-h1 text-on-surface">{TAB_TITLES[tab]}</h1>
+          </div>
+        </header>
+
+        {/* Tab content */}
+        <main className="flex-1 px-xl py-lg max-w-6xl w-full">
+          {tab === "search" && <SearchPane />}
+
+          {tab === "projects" && profile && (
+            <ProjectsTab pmUid={profile.uid} />
+          )}
+
+          {tab === "roster" && profile && (
+            <RosterTab pmUid={profile.uid} />
+          )}
+
+          <LiabilityFooter />
+        </main>
+      </div>
     </div>
   );
 }
