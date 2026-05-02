@@ -1,0 +1,112 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isPM() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'property_manager';
+    }
+
+    function hasPmRelationship(vendorUid) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/vendors/$(vendorUid)/pmRelationships/$(request.auth.uid));
+    }
+
+    // ── leads ─────────────────────────────────────────────────────────────────
+    match /leads/{leadId} {
+      allow create: if true;
+      allow read, update, delete: if false;
+    }
+
+    // ── users ─────────────────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+      allow read: if isAdmin();
+    }
+
+    // ── vendors (public discoverable fields) ──────────────────────────────────
+    // Split-collection: vendors/{vendorUid} holds public-safe fields only.
+    // PII (contactEmail, phone) lives in vendors/{vendorUid}/private/contact.
+    match /vendors/{vendorUid} {
+      allow read, write: if isOwner(vendorUid);
+      allow read: if isAdmin();
+      allow read: if hasPmRelationship(vendorUid);
+      // Any signed-in PM can read discoverable vendors (enables search + tier badge in results)
+      allow read: if isPM() && resource.data.discoverable == true;
+    }
+
+    // Private contact info — only vendor self, admin, or PM with relationship
+    match /vendors/{vendorUid}/private/{doc} {
+      allow read, write: if isOwner(vendorUid);
+      allow read: if isAdmin();
+      allow read: if hasPmRelationship(vendorUid);
+    }
+
+    // Documents subcollection
+    match /vendors/{vendorUid}/documents/{docType} {
+      allow read: if isOwner(vendorUid) || isAdmin() || hasPmRelationship(vendorUid);
+      allow create: if isOwner(vendorUid);
+      // Vendor may update any field EXCEPT adminReviewed.
+      // Vendor may set tier to 'unverified' or 'self_verified' only.
+      // Admin can set any tier including 'verified'.
+      allow update: if isOwner(vendorUid) &&
+        !request.resource.data.diff(resource.data).affectedKeys().has('adminReviewed') &&
+        (!request.resource.data.diff(resource.data).affectedKeys().has('tier') ||
+          request.resource.data.tier in ['unverified', 'self_verified']);
+      allow update: if isAdmin();
+    }
+
+    // PM relationships subcollection
+    match /vendors/{vendorUid}/pmRelationships/{pmUid} {
+      allow read, write: if isOwner(pmUid) || isOwner(vendorUid);
+      allow read: if isAdmin();
+    }
+
+    // ── projects ──────────────────────────────────────────────────────────────
+    match /projects/{projectId} {
+      allow read, write: if isSignedIn() && resource.data.pmUid == request.auth.uid;
+      allow create: if isPM();
+      allow read: if isSignedIn() &&
+        exists(/databases/$(database)/documents/projects/$(projectId)/vendors/$(request.auth.uid));
+      allow read: if isAdmin();
+    }
+
+    match /projects/{projectId}/vendors/{vendorUid} {
+      allow read, write: if isSignedIn() &&
+        get(/databases/$(database)/documents/projects/$(projectId)).data.pmUid == request.auth.uid;
+      allow read: if isOwner(vendorUid);
+      allow read: if isAdmin();
+    }
+
+    // ── invites ────────────────────────────────────────────────────────────────
+    match /invites/{inviteId} {
+      allow create: if isPM();
+      allow read, update: if isSignedIn() && resource.data.pmUid == request.auth.uid;
+      allow read, update: if isSignedIn() && resource.data.vendorUid == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.vendorEmail == request.auth.token.email;
+      allow read, write: if isAdmin();
+    }
+
+    // ── notifications ──────────────────────────────────────────────────────────
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() &&
+        (resource.data.vendorUid == request.auth.uid || resource.data.pmUid == request.auth.uid);
+      // Cloud Functions write via admin SDK
+    }
+  }
+}

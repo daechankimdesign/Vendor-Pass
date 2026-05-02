@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // vendor-docs/{vendorUid}/{docType}/{filename}
+    match /vendor-docs/{vendorUid}/{docType}/{filename} {
+      // Vendor can upload and read their own documents
+      allow read, write: if request.auth != null && request.auth.uid == vendorUid;
+
+      // Admins can read all documents
+      allow read: if request.auth != null &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+
+      // PMs with a relationship can read vendor documents
+      allow read: if request.auth != null &&
+        firestore.exists(/databases/(default)/documents/vendors/$(vendorUid)/pmRelationships/$(request.auth.uid));
+
+      // File size limit: 10MB
+      allow write: if request.auth != null &&
+        request.auth.uid == vendorUid &&
+        request.resource.size <= 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*|application/pdf');
+    }
+  }
+}
