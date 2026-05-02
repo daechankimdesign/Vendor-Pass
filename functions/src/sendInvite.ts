@@ -3,7 +3,7 @@ import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https
 import { defineString } from "firebase-functions/params";
 
 const db = admin.firestore();
-const appUrl = defineString("APP_URL", { default: "https://compliance-roster.web.app" });
+const appUrl = defineString("APP_URL", { default: "https://vendorpass.web.app" });
 const sendgridApiKey = defineString("SENDGRID_API_KEY", { default: "" });
 
 interface SendInvitePayload {
@@ -21,6 +21,7 @@ interface SendInvitePayload {
  * Branch B — no account: invite status = 'pending_signup', email includes signup link with ?invite=.
  */
 export const sendInvite = onCall(
+  { invoker: "public" },
   async (request: CallableRequest<SendInvitePayload>) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Must be signed in.");
@@ -33,24 +34,40 @@ export const sendInvite = onCall(
       throw new HttpsError("permission-denied", "pmUid mismatch.");
     }
 
+    const pmSnap = await db.collection("users").doc(pmUid).get();
+    if (pmSnap.data()?.role !== "property_manager") {
+      throw new HttpsError("permission-denied", "Only property managers can send invites.");
+    }
+
     const projectSnap = await db.collection("projects").doc(projectId).get();
     if (!projectSnap.exists || projectSnap.data()?.pmUid !== pmUid) {
       throw new HttpsError("not-found", "Project not found or access denied.");
     }
 
-    const pmSnap = await db.collection("users").doc(pmUid).get();
     const pmName = pmSnap.data()?.displayName ?? "A property manager";
     const projectName = projectSnap.data()?.name ?? "a project";
 
     let resolvedVendorUid: string | null = explicitVendorUid ?? null;
+    let resolvedVendorEmail = vendorEmail?.trim().toLowerCase() ?? "";
 
     if (!resolvedVendorUid) {
       try {
-        const userRecord = await admin.auth().getUserByEmail(vendorEmail);
+        const userRecord = await admin.auth().getUserByEmail(resolvedVendorEmail);
         resolvedVendorUid = userRecord.uid;
       } catch {
         resolvedVendorUid = null;
       }
+    } else if (!resolvedVendorEmail) {
+      try {
+        const userRecord = await admin.auth().getUser(resolvedVendorUid);
+        resolvedVendorEmail = userRecord.email?.toLowerCase() ?? "";
+      } catch {
+        throw new HttpsError("not-found", "Vendor account not found.");
+      }
+    }
+
+    if (!resolvedVendorEmail) {
+      throw new HttpsError("invalid-argument", "vendorEmail is required.");
     }
 
     const now = admin.firestore.FieldValue.serverTimestamp();
@@ -64,7 +81,7 @@ export const sendInvite = onCall(
       await inviteRef.set({
         pmUid,
         vendorUid: resolvedVendorUid,
-        vendorEmail,
+        vendorEmail: resolvedVendorEmail,
         projectId,
         status: "pending",
         source,
@@ -73,9 +90,9 @@ export const sendInvite = onCall(
       });
 
       await queueEmail({
-        to: vendorEmail,
-        subject: `${pmName} invited you to a project on Compliance Roster`,
-        text: `${pmName} has invited you to project "${projectName}" on Compliance Roster. Log in to accept or decline: ${appUrl.value()}`,
+        to: resolvedVendorEmail,
+        subject: `${pmName} invited you to a project on VendorPass`,
+        text: `${pmName} has invited you to project "${projectName}" on VendorPass. Log in to accept or decline: ${appUrl.value()}`,
         inviteId: inviteRef.id,
       });
 
@@ -85,7 +102,7 @@ export const sendInvite = onCall(
       const inviteRef = db.collection("invites").doc();
       await inviteRef.set({
         pmUid,
-        vendorEmail,
+        vendorEmail: resolvedVendorEmail,
         projectId,
         status: "pending_signup",
         source,
@@ -95,9 +112,9 @@ export const sendInvite = onCall(
 
       const signupLink = `${appUrl.value()}/signup?invite=${inviteRef.id}`;
       await queueEmail({
-        to: vendorEmail,
-        subject: `${pmName} invited you to join Compliance Roster`,
-        text: `${pmName} has invited you to join Compliance Roster for project "${projectName}". Sign up here: ${signupLink}`,
+        to: resolvedVendorEmail,
+        subject: `${pmName} invited you to join VendorPass`,
+        text: `${pmName} has invited you to join VendorPass for project "${projectName}". Sign up here: ${signupLink}`,
         inviteId: inviteRef.id,
       });
 

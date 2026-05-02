@@ -66,10 +66,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ) {
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     const { uid } = credential.user;
+    const accountEmail = credential.user.email ?? email;
 
     // Create users/{uid} doc
     const userProfile: Omit<UserProfile, "uid"> = {
-      email,
+      email: accountEmail,
       role,
       displayName,
       createdAt: serverTimestamp(),
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       // Private contact doc
       await setDoc(doc(db, "vendors", uid, "private", "contact"), {
-        contactEmail: email,
+        contactEmail: accountEmail,
         phone: "",
       });
     }

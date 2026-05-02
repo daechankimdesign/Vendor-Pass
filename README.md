@@ -1,9 +1,9 @@
-# Compliance Roster
+# VendorPass
 
 > B2B Property-Vendor Discovery & Compliance Platform
 
-**Design system source of truth: [`/design.md`](./design.md)**
-All UI components consume tokens from `design.md`. Never hand-type hex values in components.
+**Design system source of truth: [`/Design.md`](./Design.md)**
+All UI components consume tokens from `Design.md`. Never hand-type hex values in components.
 
 ---
 
@@ -29,12 +29,11 @@ cp web/.env.local.example web/.env.local
 ### 3. Document AI processor IDs
 Create one Document AI processor per doc type in Google Cloud Console, then set:
 ```bash
-firebase functions:config:set \
-  documentai.business_license_processor="projects/PROJECT_ID/locations/us/processors/PROCESSOR_ID" \
-  documentai.w9_processor="projects/PROJECT_ID/locations/us/processors/PROCESSOR_ID" \
-  documentai.coi_processor="projects/PROJECT_ID/locations/us/processors/PROCESSOR_ID" \
-  app.url="https://YOUR_APP.web.app" \
-  sendgrid.api_key="YOUR_KEY_WHEN_READY"
+firebase functions:params:set BUSINESS_LICENSE_PROCESSOR_ID="projects/PROJECT_ID/locations/us/processors/PROCESSOR_ID"
+firebase functions:params:set W9_PROCESSOR_ID="projects/PROJECT_ID/locations/us/processors/PROCESSOR_ID"
+firebase functions:params:set COI_PROCESSOR_ID="projects/PROJECT_ID/locations/us/processors/PROCESSOR_ID"
+firebase functions:params:set APP_URL="https://YOUR_APP.web.app"
+firebase functions:params:set SENDGRID_API_KEY="YOUR_KEY_WHEN_READY"
 ```
 
 ### 4. Install dependencies
@@ -50,6 +49,21 @@ firebase deploy --only firestore:rules,firestore:indexes,storage
 
 ### 6. Admin users
 Set `role: "admin"` manually in Firestore console for `users/{uid}`, and add their email to `web/src/config/admins.ts`.
+
+---
+
+## MVP User Flow
+
+Vendor discovery comes before account creation or sales handoff.
+
+1. A property manager lands on VendorPass and searches by category and zip immediately.
+2. Public search only reads public-safe vendor fields from `vendors/{vendorUid}`.
+3. To invite a vendor, the PM signs up or signs in, creates/selects a project, and sends an invite.
+4. Existing vendors receive a project invite without exposing private contact data in search.
+5. New vendors receive a signup invite, complete onboarding, and accept/decline from the vendor dashboard.
+6. Accepted invites create both `projects/{projectId}/vendors/{vendorUid}` and `vendors/{vendorUid}/pmRelationships/{pmUid}` through Cloud Functions.
+
+Keep the path huddleless: search first, defer account creation until intent is clear, and avoid asking for meetings or manual approval before a PM can see the marketplace.
 
 ---
 
@@ -95,7 +109,8 @@ users/{uid}
   email, role ("property_manager" | "vendor" | "admin"), displayName, createdAt
 
 vendors/{vendorUid}                         <- public-safe fields only
-  businessName, businessZipCode, serviceZipCodes[], categories[], discoverable, createdAt
+  businessName, businessZipCode, serviceZipCodes[], categories[], discoverable,
+  overallTier (function-maintained), createdAt
 
 vendors/{vendorUid}/private/contact         <- PII, locked down
   contactEmail, phone
@@ -123,16 +138,23 @@ notifications/{id}
 ### Public/private vendor split
 
 `vendors/{vendorUid}` holds only public-safe fields (name, zip, categories, discoverable).
-Any signed-in PM can read a discoverable vendor's public profile during search.
+Anyone can read a discoverable vendor's public profile during search.
 `vendors/{vendorUid}/private/contact` holds PII (email, phone) — readable only by the vendor,
 admins, and PMs who have an accepted pmRelationships doc.
+
+Verification-changing writes are server-owned:
+- Vendors upload files to Storage; `processDocument` creates document records.
+- Vendors confirm extracted fields through `confirmVendorDocument`.
+- Admins promote documents through `adminPromoteDocument`.
+- Invite acceptance/decline and invite-to-new-vendor attachment run through Cloud Functions.
 
 ---
 
 ## Email (Trigger Email Extension)
 
 Install the Firebase "Trigger Email" extension and configure it with your SendGrid API key.
-Until the key is wired, `sendInvite` logs "would send" and writes notification docs without throwing.
+Until the key is wired, `sendInvite` logs "would send" without throwing. Once configured,
+it queues email through the extension's `mail` collection.
 
 SMS via Twilio is out of scope for MVP.
 
@@ -164,6 +186,7 @@ SMS via Twilio is out of scope for MVP.
 | Project model | Model B — tag layer over PM-vendor roster | Projects are organizational, not compliance-scoping |
 | Compliance scope | Global per vendor (not per project) | Per-project requirements are a V2 feature |
 | Primary product motion | Vendor search + discovery | Discovery is the core value; roster is secondary |
+| Search access | Public discoverable search first | PMs should inspect supply before signing up or scheduling conversations |
 | Location matching | Zip-code only (no geo/radius) | Simplicity for MVP; geo search is V2 |
 | Service taxonomy | Fixed 7 trades | Prevents taxonomy sprawl; adding categories is deliberate |
 | Vendor data split | Public (vendors/{uid}) + private (private/contact) | PII not exposed to all PMs; unlocked only after invite acceptance |

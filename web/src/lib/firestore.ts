@@ -3,7 +3,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
   updateDoc,
   addDoc,
   query,
@@ -13,10 +12,10 @@ import {
   DocumentReference,
   CollectionReference,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../firebase";
 import type { UserRole } from "../contexts/AuthContext";
 import type { DocType, VendorDocument, VerificationTier } from "./docTypes";
-import { computeOverallTier } from "./docTypes";
 import type { ServiceCategory } from "./categories";
 
 // ── Type definitions ──────────────────────────────────────────────────────────
@@ -144,24 +143,13 @@ export async function confirmVendorDocument(
   fields: Record<string, { value: string | null; confidence: number }>,
   expirationDate: Timestamp | null
 ): Promise<void> {
-  await updateDoc(vendorDocumentDoc(vendorUid, docType), {
-    extractedFields: fields,
-    expirationDate,
-    vendorConfirmed: true,
-    tier: "self_verified" as VerificationTier,
-    lastUpdatedAt: serverTimestamp(),
+  if (!vendorUid) throw new Error("Vendor UID is required.");
+  const confirmDocument = httpsCallable(functions, "confirmVendorDocument");
+  await confirmDocument({
+    docType,
+    fields,
+    expirationDate: expirationDate ? expirationDate.toMillis() : null,
   });
-
-  // Recompute and denormalize overallTier onto the public vendor doc
-  const allDocs = await getVendorDocuments(vendorUid);
-  const confirmedDoc: VendorDocument = {
-    ...(allDocs[docType] ?? ({} as VendorDocument)),
-    tier: "self_verified",
-    vendorConfirmed: true,
-  };
-  allDocs[docType] = confirmedDoc;
-  const overallTier = computeOverallTier(allDocs);
-  await updateDoc(vendorDoc(vendorUid), { overallTier });
 }
 
 /** Admin: promote a document to verified (tier 3) and update overallTier. */
@@ -169,15 +157,8 @@ export async function adminPromoteDocument(
   vendorUid: string,
   docType: DocType
 ): Promise<void> {
-  await updateDoc(vendorDocumentDoc(vendorUid, docType), {
-    tier: "verified" as VerificationTier,
-    adminReviewed: true,
-    lastUpdatedAt: serverTimestamp(),
-  });
-
-  const allDocs = await getVendorDocuments(vendorUid);
-  const overallTier = computeOverallTier(allDocs);
-  await updateDoc(vendorDoc(vendorUid), { overallTier });
+  const promoteDocument = httpsCallable(functions, "adminPromoteDocument");
+  await promoteDocument({ vendorUid, docType });
 }
 
 export async function getPmRelationships(
@@ -197,14 +178,6 @@ export async function toggleWorkOrdersPaused(
   paused: boolean
 ): Promise<void> {
   await updateDoc(pmRelationshipDoc(vendorUid, pmUid), { workOrdersPaused: paused });
-}
-
-export async function upsertPmRelationship(vendorUid: string, pmUid: string): Promise<void> {
-  const ref = pmRelationshipDoc(vendorUid, pmUid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, { firstLinkedAt: serverTimestamp(), workOrdersPaused: false });
-  }
 }
 
 export async function getPmProjects(pmUid: string): Promise<Array<Project & { id: string }>> {
@@ -229,20 +202,14 @@ export async function updateProject(
 }
 
 export async function acceptInvite(inviteId: string, vendorUid: string): Promise<void> {
-  const invSnap = await getDoc(inviteDoc(inviteId));
-  if (!invSnap.exists()) throw new Error("Invite not found");
-  const inv = invSnap.data() as Invite;
-
-  await updateDoc(inviteDoc(inviteId), { status: "accepted", vendorUid });
-  await setDoc(projectVendorDoc(inv.projectId, vendorUid), {
-    addedAt: serverTimestamp(),
-    inviteId,
-  });
-  await upsertPmRelationship(vendorUid, inv.pmUid);
+  if (!vendorUid) throw new Error("Vendor UID is required.");
+  const acceptInviteCallable = httpsCallable(functions, "acceptInvite");
+  await acceptInviteCallable({ inviteId });
 }
 
 export async function declineInvite(inviteId: string): Promise<void> {
-  await updateDoc(inviteDoc(inviteId), { status: "declined" });
+  const declineInviteCallable = httpsCallable(functions, "declineInvite");
+  await declineInviteCallable({ inviteId });
 }
 
 export async function getVendorInvites(vendorUid: string): Promise<Array<Invite & { id: string }>> {
@@ -270,11 +237,22 @@ export async function getPmInvites(pmUid: string): Promise<Array<Invite & { id: 
 }
 
 export async function attachInviteToNewVendor(inviteId: string, vendorUid: string): Promise<void> {
-  await updateDoc(inviteDoc(inviteId), { vendorUid, status: "pending" });
+  if (!vendorUid) throw new Error("Vendor UID is required.");
+  const attachInvite = httpsCallable(functions, "attachInviteToNewVendor");
+  await attachInvite({ inviteId });
 }
 
 export async function submitLead(email: string): Promise<void> {
   await addDoc(leadsCol(), { email, createdAt: serverTimestamp(), source: "landing" });
+}
+
+/** Return all discoverable vendors (no filter). Used for the public landing page. */
+export async function getDiscoverableVendors(): Promise<
+  Array<VendorPublicProfile & { uid: string }>
+> {
+  const q = query(vendorsCol(), where("discoverable", "==", true));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as VendorPublicProfile) }));
 }
 
 /** Search discoverable vendors by category and zip. Returns vendor docs with uid.
@@ -308,6 +286,51 @@ export async function getVendorUidsForPm(pmUid: string): Promise<string[]> {
     })
   );
   return Array.from(vendorUidSet);
+}
+
+/** Get all projects a vendor has been accepted into. */
+export async function getVendorProjects(
+  vendorUid: string
+): Promise<Array<Project & { id: string }>> {
+  const invites = await getVendorInvites(vendorUid);
+  const acceptedIds = [
+    ...new Set(
+      invites.filter((i) => i.status === "accepted").map((i) => i.projectId)
+    ),
+  ];
+  const results = await Promise.all(
+    acceptedIds.map(async (id) => {
+      const snap = await getDoc(projectDoc(id));
+      return snap.exists() ? { id, ...(snap.data() as Project) } : null;
+    })
+  );
+  return results.filter((p): p is Project & { id: string } => p !== null);
+}
+
+/** Get PM clients for a vendor with their user profiles. */
+export async function getVendorClients(vendorUid: string): Promise<
+  Array<{
+    pmUid: string;
+    displayName: string;
+    email: string;
+    relationship: PmRelationship;
+  }>
+> {
+  const relationships = await getPmRelationships(vendorUid);
+  return Promise.all(
+    Object.entries(relationships).map(async ([pmUid, relationship]) => {
+      const snap = await getDoc(userDoc(pmUid));
+      const data = snap.exists()
+        ? (snap.data() as { displayName: string; email: string })
+        : null;
+      return {
+        pmUid,
+        displayName: data?.displayName ?? "Unknown",
+        email: data?.email ?? "",
+        relationship,
+      };
+    })
+  );
 }
 
 export async function getUserRole(uid: string): Promise<UserRole | null> {

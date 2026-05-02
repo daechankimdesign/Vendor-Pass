@@ -36,7 +36,7 @@ const REQUIRED_FIELDS: Record<DocType, string[]> = {
 };
 
 // Storage path format: vendor-docs/{vendorUid}/{docType}/{filename}
-export const processDocument = onObjectFinalized(async (event) => {
+export const processDocument = onObjectFinalized({ region: "us-east1" }, async (event) => {
   const filePath = event.data.name;
   if (!filePath) return;
 

@@ -42,7 +42,7 @@ export default function Login() {
     <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-gutter">
       <div className="w-full max-w-sm">
         <Link to="/" className="text-display text-on-surface block mb-lg">
-          Compliance Roster.
+          VendorPass.
         </Link>
 
         <h1 className="text-h1 text-on-surface mb-lg">Sign in</h1>

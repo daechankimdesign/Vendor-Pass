@@ -16,6 +16,10 @@ database-debug.log
 .env.local
 .env.*.local
 web/.env.local
+functions/.env*
+
+# Local agent/worktree artifacts
+.claude/
 
 # Editor
 .DS_Store

@@ -49,7 +49,7 @@ export default function PmDashboard() {
       {/* Nav */}
       <header className="border-b border-outline-variant bg-surface-container-lowest">
         <div className="page-container flex items-center justify-between h-14">
-          <span className="text-h2 text-on-surface">Compliance Roster.</span>
+          <span className="text-h2 text-on-surface">VendorPass.</span>
           <div className="flex items-center gap-md">
             <span className="text-body-sm text-on-surface-variant hidden sm:block">
               {profile?.displayName}

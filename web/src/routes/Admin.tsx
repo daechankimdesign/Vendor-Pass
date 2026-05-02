@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { collectionGroup, getDocs, query, where } from "firebase/firestore";
-import { db } from "../firebase";
+import { getDownloadURL, ref } from "firebase/storage";
+import { db, storage } from "../firebase";
 import { adminPromoteDocument, getVendorProfile } from "../lib/firestore";
 import type { VendorPublicProfile } from "../lib/firestore";
 import type { VendorDocument, DocType } from "../lib/docTypes";
@@ -14,6 +15,7 @@ interface ReviewItem {
   docType: DocType;
   document: VendorDocument;
   vendor: VendorPublicProfile | null;
+  fileUrl: string | null;
 }
 
 export default function Admin() {
@@ -38,12 +40,16 @@ export default function Admin() {
           const pathParts = d.ref.path.split("/");
           const vendorUid = pathParts[1];
           const docType = d.id as DocType;
-          const [vendor] = await Promise.all([getVendorProfile(vendorUid)]);
+          const [vendor, fileUrl] = await Promise.all([
+            getVendorProfile(vendorUid),
+            getDocumentUrl((d.data() as VendorDocument).storagePath),
+          ]);
           return {
             vendorUid,
             docType,
             document: d.data() as VendorDocument,
             vendor,
+            fileUrl,
           } satisfies ReviewItem;
         })
       );
@@ -69,7 +75,7 @@ export default function Admin() {
     <div className="min-h-screen bg-surface">
       <header className="border-b border-outline-variant bg-surface-container-lowest">
         <div className="page-container flex items-center justify-between h-14">
-          <span className="text-h2 text-on-surface">Admin — Compliance Roster</span>
+          <span className="text-h2 text-on-surface">Admin — VendorPass</span>
           <button className="btn-tertiary text-body-sm" onClick={logOut}>
             Sign out
           </button>
@@ -108,9 +114,9 @@ export default function Admin() {
                       </div>
                     </div>
                     <div className="flex gap-sm items-start">
-                      {item.document.storagePath && (
+                      {item.fileUrl && (
                         <a
-                          href={`https://storage.googleapis.com/${item.document.storagePath}`}
+                          href={item.fileUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="btn-secondary text-body-sm"
@@ -166,4 +172,13 @@ export default function Admin() {
       </div>
     </div>
   );
+}
+
+async function getDocumentUrl(storagePath: string | undefined): Promise<string | null> {
+  if (!storagePath) return null;
+  try {
+    return await getDownloadURL(ref(storage, storagePath));
+  } catch {
+    return null;
+  }
 }

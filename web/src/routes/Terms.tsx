@@ -13,7 +13,7 @@ export default function Terms() {
             TODO: legal review
           </p>
           <p>
-            Compliance Roster is a document-tracking facilitator. We do not underwrite insurance,
+            VendorPass is a document-tracking facilitator. We do not underwrite insurance,
             validate license authenticity, or assume liability for vendor-submitted information.
           </p>
           <p>Full legal terms will be provided upon product launch.</p>

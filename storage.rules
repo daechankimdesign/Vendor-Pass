@@ -6,7 +6,7 @@ service firebase.storage {
     // vendor-docs/{vendorUid}/{docType}/{filename}
     match /vendor-docs/{vendorUid}/{docType}/{filename} {
       // Vendor can upload and read their own documents
-      allow read, write: if request.auth != null && request.auth.uid == vendorUid;
+      allow read: if request.auth != null && request.auth.uid == vendorUid;
 
       // Admins can read all documents
       allow read: if request.auth != null &&
@@ -19,6 +19,7 @@ service firebase.storage {
       // File size limit: 10MB
       allow write: if request.auth != null &&
         request.auth.uid == vendorUid &&
+        docType in ['businessLicense', 'w9', 'coi'] &&
         request.resource.size <= 10 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*|application/pdf');
     }

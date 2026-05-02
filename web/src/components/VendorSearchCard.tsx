@@ -4,7 +4,7 @@ import type { VendorPublicProfile } from "../lib/firestore";
 
 interface Props {
   vendor: VendorPublicProfile & { uid: string };
-  onInvite: (vendorUid: string) => void;
+  onInvite?: (vendorUid: string) => void;
 }
 
 export default function VendorSearchCard({ vendor, onInvite }: Props) {
@@ -32,12 +32,14 @@ export default function VendorSearchCard({ vendor, onInvite }: Props) {
         </p>
       </div>
 
-      <button
-        className="btn-primary flex-shrink-0"
-        onClick={() => onInvite(vendor.uid)}
-      >
-        Invite to Project
-      </button>
+      {onInvite && (
+        <button
+          className="btn-primary flex-shrink-0"
+          onClick={() => onInvite(vendor.uid)}
+        >
+          Invite to Project
+        </button>
+      )}
     </div>
   );
 }
