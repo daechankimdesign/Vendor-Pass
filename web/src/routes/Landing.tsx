@@ -794,7 +794,6 @@ export default function Landing() {
           vendorUid={inviteVendor.uid}
           vendorEmail=""
           onClose={() => setInviteVendor(null)}
-          onInvited={() => setInviteVendor(null)}
         />
       )}
 

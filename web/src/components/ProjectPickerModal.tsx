@@ -166,9 +166,24 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
 
         {/* ── Sent ── */}
         {view === "sent" && (
-          <div className="space-y-md">
-            <p className="text-body-md text-on-surface">Invite sent successfully.</p>
-            <button className="btn-secondary w-full" onClick={onClose}>Close</button>
+          <div className="space-y-md text-center py-md">
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary-container mx-auto">
+              <CheckIcon />
+            </div>
+            <div>
+              <p className="text-h2 text-on-surface">Invite sent!</p>
+              {selectedProject && (
+                <p className="text-body-sm text-on-surface-variant mt-xs">
+                  The vendor has been invited to <span className="font-semibold text-on-surface">{selectedProject.name}</span>.
+                </p>
+              )}
+              {note && (
+                <p className="text-body-sm text-on-surface-variant mt-xs">
+                  Your note and{files.length > 0 ? ` ${files.length} attachment${files.length > 1 ? "s" : ""}` : " message"} were included.
+                </p>
+              )}
+            </div>
+            <button className="btn-primary w-full" onClick={onClose}>Done</button>
           </div>
         )}
 
@@ -399,6 +414,20 @@ function AttachIcon() {
         d="M12 6.5L6.5 12A3.5 3.5 0 012 7.5L8 1.5a2 2 0 013 3L5 11a.5.5 0 01-1-1l5.5-5.5"
         stroke="currentColor"
         strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <path
+        d="M6 14l6 6L22 8"
+        stroke="currentColor"
+        strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

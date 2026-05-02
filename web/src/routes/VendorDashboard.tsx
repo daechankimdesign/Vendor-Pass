@@ -1,10 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { onSnapshot } from "firebase/firestore";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { storage } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import {
   vendorDocumentsCol,
   vendorDoc,
+  customDocumentsCol,
+  addCustomDocument,
+  deleteCustomDocument,
   getVendorInvites,
   acceptInvite,
   declineInvite,
@@ -20,6 +25,7 @@ import type {
   VendorPrivateContact,
   Invite,
   Project,
+  CustomDocument,
 } from "../lib/firestore";
 import { DOC_TYPE_ORDER, DOC_TYPE_SCHEMAS } from "../lib/docTypes";
 import type { VendorDocument, DocType } from "../lib/docTypes";
@@ -130,9 +136,11 @@ function Sidebar({
 function DocumentsPane({
   uid,
   docs,
+  customDocs,
 }: {
   uid: string;
   docs: Partial<Record<DocType, VendorDocument>>;
+  customDocs: Array<CustomDocument & { id: string }>;
 }) {
   const [expandedDoc, setExpandedDoc] = useState<DocType | null>(null);
 
@@ -278,7 +286,241 @@ function DocumentsPane({
           </tbody>
         </table>
       </div>
+
+      {/* Additional / custom documents */}
+      <AdditionalDocsSection uid={uid} customDocs={customDocs} />
     </div>
+  );
+}
+
+// ── Additional documents section ──────────────────────────────────────────────
+
+function AdditionalDocsSection({
+  uid,
+  customDocs,
+}: {
+  uid: string;
+  customDocs: Array<CustomDocument & { id: string }>;
+}) {
+  const [showForm, setShowForm] = useState(false);
+
+  return (
+    <section className="space-y-md">
+      <div className="flex items-center justify-between">
+        <h2 className="text-h2 text-on-surface">Additional Documents</h2>
+        <button
+          className="btn-secondary text-body-sm"
+          onClick={() => setShowForm((v) => !v)}
+        >
+          {showForm ? "Cancel" : "+ Add Document"}
+        </button>
+      </div>
+
+      {showForm && (
+        <AddCustomDocumentForm
+          uid={uid}
+          onSaved={() => setShowForm(false)}
+        />
+      )}
+
+      {customDocs.length === 0 && !showForm ? (
+        <div className="flex items-center justify-center h-24 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
+          No additional documents yet.
+        </div>
+      ) : (
+        customDocs.length > 0 && (
+          <div className="border border-outline-variant rounded overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-surface-container">
+                <tr>
+                  <Th>Name</Th>
+                  <Th>Notes</Th>
+                  <Th>Added</Th>
+                  <Th>File</Th>
+                  <Th></Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant">
+                {customDocs.map((d) => (
+                  <CustomDocRow key={d.id} vendorUid={uid} doc={d} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </section>
+  );
+}
+
+function CustomDocRow({
+  vendorUid,
+  doc,
+}: {
+  vendorUid: string;
+  doc: CustomDocument & { id: string };
+}) {
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!doc.storagePath) return;
+    getDownloadURL(storageRef(storage, doc.storagePath))
+      .then(setDownloadUrl)
+      .catch(() => setDownloadUrl(null));
+  }, [doc.storagePath]);
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${doc.name}"?`)) return;
+    setDeleting(true);
+    await deleteCustomDocument(vendorUid, doc.id);
+  }
+
+  return (
+    <tr className="bg-surface hover:bg-surface-container-low transition-colors">
+      <td className="px-md py-sm text-body-md text-on-surface font-semibold">{doc.name}</td>
+      <td className="px-md py-sm text-body-sm text-on-surface-variant max-w-xs truncate">
+        {doc.notes || "—"}
+      </td>
+      <td className="px-md py-sm text-body-sm text-on-surface-variant">
+        {formatDate(doc.uploadedAt as { seconds: number })}
+      </td>
+      <td className="px-md py-sm">
+        {downloadUrl ? (
+          <a
+            href={downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-body-sm text-primary hover:underline"
+          >
+            {doc.fileName}
+          </a>
+        ) : (
+          <span className="text-body-sm text-on-surface-variant">{doc.fileName}</span>
+        )}
+      </td>
+      <td className="px-md py-sm text-right">
+        <button
+          className="text-body-sm text-error hover:underline disabled:opacity-40"
+          onClick={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? "Deleting…" : "Delete"}
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function AddCustomDocumentForm({
+  uid,
+  onSaved,
+}: {
+  uid: string;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setError("Document name is required."); return; }
+    if (!file) { setError("Please attach a file."); return; }
+    if (file.size > 10 * 1024 * 1024) { setError("File must be under 10MB."); return; }
+
+    setError(null);
+    setSaving(true);
+    setProgress(0);
+
+    const ext = file.name.split(".").pop() ?? "bin";
+    const path = `vendor-docs/${uid}/custom/${Date.now()}.${ext}`;
+    const sRef = storageRef(storage, path);
+    const task = uploadBytesResumable(sRef, file, { contentType: file.type });
+
+    task.on(
+      "state_changed",
+      (snap) => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+      (err) => {
+        setError("Upload failed. Please try again.");
+        console.error(err);
+        setSaving(false);
+        setProgress(null);
+      },
+      async () => {
+        await addCustomDocument(uid, {
+          name: name.trim(),
+          notes: notes.trim(),
+          storagePath: path,
+          fileName: file.name,
+        });
+        setSaving(false);
+        setProgress(null);
+        onSaved();
+      }
+    );
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="card space-y-md border border-outline-variant"
+    >
+      <FormField label="Document name" required>
+        <input
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Liability Waiver, Insurance Rider"
+        />
+      </FormField>
+
+      <FormField label="Notes">
+        <input
+          className="input"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional description"
+        />
+      </FormField>
+
+      <FormField label="File" required>
+        <label className="inline-flex items-center gap-sm btn-secondary cursor-pointer text-body-sm">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 2v9M5 5l3-3 3 3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {file ? file.name : "Choose file"}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="sr-only"
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+      </FormField>
+
+      {progress !== null && (
+        <div className="space-y-xs">
+          <p className="text-body-sm text-on-surface-variant">Uploading… {progress}%</p>
+          <div className="w-full bg-surface-container rounded-sm h-1">
+            <div className="bg-primary-container h-1 rounded-sm transition-all" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-body-sm text-error">{error}</p>}
+
+      <div className="flex gap-sm">
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? "Uploading…" : "Save Document"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -748,7 +990,7 @@ function StatCard({
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return (
     <th className="px-md py-sm text-label-caps uppercase text-on-surface-variant text-left font-semibold">
       {children}
@@ -785,6 +1027,7 @@ export default function VendorDashboard() {
 
   const [tab, setTab] = useState<Tab>("documents");
   const [docs, setDocs] = useState<Partial<Record<DocType, VendorDocument>>>({});
+  const [customDocs, setCustomDocs] = useState<Array<CustomDocument & { id: string }>>([]);
   const [profile, setProfile] = useState<VendorPublicProfile | null>(null);
   const [contact, setContact] = useState<VendorPrivateContact | null>(null);
   const [invites, setInvites] = useState<Array<Invite & { id: string }>>([]);
@@ -807,6 +1050,16 @@ export default function VendorDashboard() {
         next[d.id as DocType] = d.data() as VendorDocument;
       });
       setDocs(next);
+    });
+  }, [uid]);
+
+  // Live custom documents
+  useEffect(() => {
+    if (!uid) return;
+    return onSnapshot(customDocumentsCol(uid), (snap) => {
+      setCustomDocs(
+        snap.docs.map((d) => ({ id: d.id, ...(d.data() as CustomDocument) }))
+      );
     });
   }, [uid]);
 
@@ -900,7 +1153,7 @@ export default function VendorDashboard() {
 
         {/* Tab content */}
         <main className="flex-1 px-xl py-lg max-w-5xl w-full">
-          {tab === "documents" && <DocumentsPane uid={uid} docs={docs} />}
+          {tab === "documents" && <DocumentsPane uid={uid} docs={docs} customDocs={customDocs} />}
 
           {tab === "projects" && (
             <ProjectsPane
