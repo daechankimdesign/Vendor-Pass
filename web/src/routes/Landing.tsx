@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getDiscoverableVendors, submitLead } from "../lib/firestore";
 import type { VendorPublicProfile } from "../lib/firestore";
 import { SERVICE_CATEGORIES, getCategoryLabel } from "../lib/categories";
 import type { ServiceCategory } from "../lib/categories";
 import type { VerificationTier } from "../lib/docTypes";
+import { DOC_TYPE_ORDER, DOC_TYPE_SCHEMAS } from "../lib/docTypes";
+import { useAuth } from "../contexts/AuthContext";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -147,12 +149,15 @@ function tierBar(tier: VerificationTier | undefined) {
 
 // ── Vendor card ───────────────────────────────────────────────────────────────
 
-function VendorCard({ vendor }: { vendor: DisplayVendor }) {
+function VendorCard({ vendor, onClick }: { vendor: DisplayVendor; onClick: () => void }) {
   const icon = vendor.categories[0] ? CATEGORY_ICONS[vendor.categories[0]] : "🏢";
   const tier = vendor.overallTier;
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded overflow-hidden flex flex-col">
+    <button
+      onClick={onClick}
+      className="bg-surface-container-lowest border border-outline-variant rounded overflow-hidden flex flex-col w-full text-left hover:border-primary-container hover:shadow-modal transition-all"
+    >
       {/* Tier color bar */}
       <div className={`h-1.5 w-full ${tierBar(tier)}`} />
 
@@ -181,14 +186,189 @@ function VendorCard({ vendor }: { vendor: DisplayVendor }) {
         </div>
       </div>
 
-      {/* CTA */}
       <div className="px-md pb-md">
-        <Link
-          to="/signup"
-          className="block text-center text-body-sm text-primary underline underline-offset-2 hover:text-on-surface"
-        >
-          Sign up to invite →
-        </Link>
+        <span className="text-body-sm text-primary">
+          View details →
+        </span>
+      </div>
+    </button>
+  );
+}
+
+// ── Vendor detail modal ───────────────────────────────────────────────────────
+
+function docStatusForTier(overallTier: VerificationTier | undefined): VerificationTier | "missing" {
+  if (overallTier === "verified") return "verified";
+  if (overallTier === "self_verified") return "self_verified";
+  return "missing";
+}
+
+function DocStatusBadge({ status }: { status: VerificationTier | "missing" }) {
+  if (status === "verified") {
+    return (
+      <span className="inline-flex items-center gap-xs text-body-sm font-semibold text-on-primary bg-primary-container px-sm py-xs rounded">
+        <ShieldCheckIcon /> Verified
+      </span>
+    );
+  }
+  if (status === "self_verified") {
+    return (
+      <span className="inline-flex items-center gap-xs text-body-sm font-semibold text-on-surface bg-tier-2-bg px-sm py-xs rounded">
+        <PendingIcon /> Self-Verified
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center text-body-sm text-on-surface-variant border border-tier-1-border px-sm py-xs rounded">
+      Not uploaded
+    </span>
+  );
+}
+
+function VendorDetailModal({
+  vendor,
+  onClose,
+}: {
+  vendor: DisplayVendor;
+  onClose: () => void;
+}) {
+  const { user, profile } = useAuth();
+  const navigate = useNavigate();
+  const docStatus = docStatusForTier(vendor.overallTier);
+
+  // Close on backdrop click
+  function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target === e.currentTarget) onClose();
+  }
+
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const isLoggedIn = !!user;
+  const isPm = profile?.role === "pm" || profile?.role === "property_manager";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center modal-overlay px-md"
+      onClick={handleBackdrop}
+    >
+      <div className="modal w-full max-w-md max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-md mb-md">
+          <div>
+            <h2 className="text-h1 text-on-surface">{vendor.businessName}</h2>
+            <p className="text-body-sm text-on-surface-variant mt-xs">
+              {vendor.businessZipCode}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-on-surface-variant hover:text-on-surface text-xl leading-none flex-shrink-0 mt-xs"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Tier */}
+        <div className="mb-md">
+          <TierChip tier={vendor.overallTier} />
+        </div>
+
+        {/* Categories */}
+        <div className="flex flex-wrap gap-xs mb-lg">
+          {vendor.categories.map((cat) => (
+            <span
+              key={cat}
+              className="inline-flex items-center gap-xs bg-surface-container text-on-surface-variant text-body-sm px-sm py-xs rounded"
+            >
+              <span>{CATEGORY_ICONS[cat]}</span>
+              {getCategoryLabel(cat)}
+            </span>
+          ))}
+        </div>
+
+        {/* Service area */}
+        <div className="mb-lg">
+          <p className="text-label-caps uppercase text-on-surface-variant mb-sm">Service Area</p>
+          <div className="flex flex-wrap gap-xs">
+            {(vendor.serviceZipCodes ?? [vendor.businessZipCode]).map((zip) => (
+              <span key={zip} className="bg-surface-container text-on-surface text-body-sm px-sm py-xs rounded">
+                {zip}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Compliance documents */}
+        <div className="mb-lg">
+          <p className="text-label-caps uppercase text-on-surface-variant mb-sm">Compliance Documents</p>
+          <div className="space-y-sm">
+            {DOC_TYPE_ORDER.map((docType) => (
+              <div key={docType} className="flex items-center justify-between gap-md py-xs border-b border-outline-variant last:border-0">
+                <span className="text-body-md text-on-surface font-semibold">
+                  {DOC_TYPE_SCHEMAS[docType].label}
+                </span>
+                <DocStatusBadge status={docStatus} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="pt-sm border-t border-outline-variant">
+          {!isLoggedIn && (
+            <div className="space-y-sm">
+              <p className="text-body-sm text-on-surface-variant">
+                Sign in to invite this vendor to your project.
+              </p>
+              <div className="flex gap-sm">
+                <button
+                  className="btn-primary flex-1"
+                  onClick={() => navigate("/login")}
+                >
+                  Sign in to Contact
+                </button>
+                <button
+                  className="btn-secondary flex-1"
+                  onClick={() => navigate("/signup")}
+                >
+                  Create Account
+                </button>
+              </div>
+            </div>
+          )}
+          {isLoggedIn && isPm && !vendor.demo && (
+            <button
+              className="btn-primary w-full"
+              onClick={() => { onClose(); navigate("/dashboard?tab=search"); }}
+            >
+              Invite to Project
+            </button>
+          )}
+          {isLoggedIn && isPm && vendor.demo && (
+            <div className="space-y-sm">
+              <p className="text-body-sm text-on-surface-variant">
+                This is a demo listing. Search real vendors from your dashboard.
+              </p>
+              <button
+                className="btn-primary w-full"
+                onClick={() => { onClose(); navigate("/dashboard?tab=search"); }}
+              >
+                Go to Dashboard
+              </button>
+            </div>
+          )}
+          {isLoggedIn && !isPm && (
+            <p className="text-body-sm text-on-surface-variant text-center">
+              Only property managers can invite vendors.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -361,6 +541,7 @@ function HeroShield() {
 export default function Landing() {
   const [allVendors, setAllVendors] = useState<DisplayVendor[]>([]);
   const [loadingVendors, setLoadingVendors] = useState(true);
+  const [selectedVendor, setSelectedVendor] = useState<DisplayVendor | null>(null);
 
   // Search / filter state
   const [category, setCategory] = useState<ServiceCategory | "">("");
@@ -554,7 +735,7 @@ export default function Landing() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md">
                 {displayVendors.map((vendor) => (
-                  <VendorCard key={vendor.uid} vendor={vendor} />
+                  <VendorCard key={vendor.uid} vendor={vendor} onClick={() => setSelectedVendor(vendor)} />
                 ))}
               </div>
             )}
@@ -577,6 +758,14 @@ export default function Landing() {
           </aside>
         </div>
       </div>
+
+      {/* ── Vendor detail modal ── */}
+      {selectedVendor && (
+        <VendorDetailModal
+          vendor={selectedVendor}
+          onClose={() => setSelectedVendor(null)}
+        />
+      )}
 
       {/* ── Footer ── */}
       <footer className="border-t border-outline-variant bg-surface-container-lowest">
