@@ -5,6 +5,8 @@ import {
   getDocs,
   updateDoc,
   addDoc,
+  deleteDoc,
+  writeBatch,
   query,
   where,
   serverTimestamp,
@@ -49,9 +51,12 @@ export interface Project {
   createdAt: Timestamp;
 }
 
+export type VendorProjectStatus = "active" | "on_hold" | "completed";
+
 export interface ProjectVendor {
   addedAt: Timestamp;
   inviteId: string;
+  vendorStatus?: VendorProjectStatus;
 }
 
 export interface Invite {
@@ -59,7 +64,7 @@ export interface Invite {
   vendorUid?: string;
   vendorEmail: string;
   projectId: string;
-  status: "pending" | "pending_signup" | "accepted" | "declined";
+  status: "pending" | "pending_signup" | "accepted" | "declined" | "dropped";
   source: "search" | "email";
   createdAt: Timestamp;
   expiresAt: Timestamp;
@@ -111,6 +116,19 @@ export const invitesCol = () => collection(db, "invites") as CollectionReference
 export const inviteDoc = (id: string) => doc(db, "invites", id) as DocumentReference;
 
 export const leadsCol = () => collection(db, "leads") as CollectionReference;
+
+export const customDocumentsCol = (vendorUid: string) =>
+  collection(db, "vendors", vendorUid, "customDocuments") as CollectionReference;
+export const customDocumentDoc = (vendorUid: string, docId: string) =>
+  doc(db, "vendors", vendorUid, "customDocuments", docId);
+
+export interface CustomDocument {
+  name: string;
+  notes: string;
+  storagePath: string;
+  fileName: string;
+  uploadedAt: Timestamp;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -212,6 +230,55 @@ export async function updateProject(
   data: Partial<Omit<Project, "pmUid" | "createdAt">>
 ): Promise<void> {
   await updateDoc(projectDoc(projectId), data as Record<string, unknown>);
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await deleteDoc(projectDoc(projectId));
+}
+
+export interface ProjectVendorDetail {
+  uid: string;
+  businessName: string;
+  contactEmail: string;
+  phone: string;
+  inviteId: string;
+}
+
+export async function getProjectVendorDetails(
+  projectId: string
+): Promise<ProjectVendorDetail[]> {
+  const snap = await getDocs(projectVendorsCol(projectId));
+  return Promise.all(
+    snap.docs.map(async (d) => {
+      const pv = d.data() as ProjectVendor;
+      const [profileSnap, contactSnap] = await Promise.all([
+        getDoc(vendorDoc(d.id)),
+        getDoc(vendorPrivateDoc(d.id)),
+      ]);
+      const profile = profileSnap.exists() ? (profileSnap.data() as VendorPublicProfile) : null;
+      const contact = contactSnap.exists() ? (contactSnap.data() as VendorPrivateContact) : null;
+      return {
+        uid: d.id,
+        businessName: profile?.businessName ?? "Unknown Vendor",
+        contactEmail: contact?.contactEmail ?? "",
+        phone: contact?.phone ?? "",
+        inviteId: pv.inviteId ?? "",
+      };
+    })
+  );
+}
+
+export async function removeVendorFromProject(
+  projectId: string,
+  vendorUid: string,
+  inviteId: string
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(projectVendorDoc(projectId, vendorUid));
+  if (inviteId) {
+    batch.update(inviteDoc(inviteId), { status: "declined" });
+  }
+  await batch.commit();
 }
 
 export interface CreateInviteOptions {
@@ -337,23 +404,58 @@ export async function getVendorUidsForPm(pmUid: string): Promise<string[]> {
   return Array.from(vendorUidSet);
 }
 
-/** Get all projects a vendor has been accepted into. */
+/** Get all projects a vendor has been accepted into, including their status in each. */
 export async function getVendorProjects(
   vendorUid: string
-): Promise<Array<Project & { id: string }>> {
+): Promise<Array<Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus }>> {
   const invites = await getVendorInvites(vendorUid);
-  const acceptedIds = [
-    ...new Set(
-      invites.filter((i) => i.status === "accepted").map((i) => i.projectId)
-    ),
-  ];
+  const accepted = invites.filter((i) => i.status === "accepted");
+  const seen = new Set<string>();
   const results = await Promise.all(
-    acceptedIds.map(async (id) => {
-      const snap = await getDoc(projectDoc(id));
-      return snap.exists() ? { id, ...(snap.data() as Project) } : null;
-    })
+    accepted
+      .filter((i) => {
+        if (seen.has(i.projectId)) return false;
+        seen.add(i.projectId);
+        return true;
+      })
+      .map(async (invite) => {
+        const [projectSnap, slotSnap] = await Promise.all([
+          getDoc(projectDoc(invite.projectId)),
+          getDoc(projectVendorDoc(invite.projectId, vendorUid)),
+        ]);
+        if (!projectSnap.exists()) return null;
+        const slot = slotSnap.exists() ? (slotSnap.data() as ProjectVendor) : null;
+        return {
+          id: invite.projectId,
+          inviteId: invite.id,
+          vendorStatus: slot?.vendorStatus ?? "active",
+          ...(projectSnap.data() as Project),
+        };
+      })
   );
-  return results.filter((p): p is Project & { id: string } => p !== null);
+  return results.filter(
+    (p): p is Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus } =>
+      p !== null
+  );
+}
+
+export async function updateVendorProjectStatus(
+  projectId: string,
+  vendorUid: string,
+  status: VendorProjectStatus
+): Promise<void> {
+  await updateDoc(projectVendorDoc(projectId, vendorUid), { vendorStatus: status });
+}
+
+export async function dropProject(
+  projectId: string,
+  vendorUid: string,
+  inviteId: string
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(projectVendorDoc(projectId, vendorUid));
+  batch.update(inviteDoc(inviteId), { status: "dropped" });
+  await batch.commit();
 }
 
 /** Get PM clients for a vendor with their user profiles. */
@@ -393,4 +495,19 @@ export function parseZipCodes(input: string): string[] {
     .split(",")
     .map((z) => z.trim())
     .filter((z) => /^\d{5}$/.test(z));
+}
+
+export async function addCustomDocument(
+  vendorUid: string,
+  data: Omit<CustomDocument, "uploadedAt">
+): Promise<string> {
+  const ref = await addDoc(customDocumentsCol(vendorUid), {
+    ...data,
+    uploadedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function deleteCustomDocument(vendorUid: string, docId: string): Promise<void> {
+  await deleteDoc(customDocumentDoc(vendorUid, docId));
 }

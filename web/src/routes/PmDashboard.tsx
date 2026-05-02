@@ -10,10 +10,13 @@ import {
   pmRelationshipDoc,
   createProject,
   updateProject,
+  deleteProject,
+  getProjectVendorDetails,
+  removeVendorFromProject,
   updatePmProfile,
   getPmInvites,
 } from "../lib/firestore";
-import type { Project, VendorPublicProfile, PmRelationship, Invite } from "../lib/firestore";
+import type { Project, VendorPublicProfile, PmRelationship, Invite, ProjectVendorDetail } from "../lib/firestore";
 import type { VendorDocument, DocType } from "../lib/docTypes";
 import { DOC_TYPE_ORDER, computeOverallTier } from "../lib/docTypes";
 import TierBadge from "../components/TierBadge";
@@ -113,6 +116,9 @@ function ProjectsTab({ pmUid }: { pmUid: string }) {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [vendorMap, setVendorMap] = useState<Record<string, ProjectVendorDetail[]>>({});
+  const [loadingVendors, setLoadingVendors] = useState<string | null>(null);
 
   useEffect(() => {
     getPmProjects(pmUid).then((p) => {
@@ -137,6 +143,33 @@ function ProjectsTab({ pmUid }: { pmUid: string }) {
     await updateProject(id, data);
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
     setEditingId(null);
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this project? This cannot be undone.")) return;
+    await deleteProject(id);
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    if (expandedId === id) setExpandedId(null);
+  }
+
+  async function handleExpand(id: string) {
+    if (expandedId === id) { setExpandedId(null); return; }
+    setExpandedId(id);
+    if (!vendorMap[id]) {
+      setLoadingVendors(id);
+      const vendors = await getProjectVendorDetails(id);
+      setVendorMap((prev) => ({ ...prev, [id]: vendors }));
+      setLoadingVendors(null);
+    }
+  }
+
+  async function handleRemoveVendor(projectId: string, vendorUid: string, inviteId: string) {
+    if (!confirm("Remove this contractor from the project?")) return;
+    await removeVendorFromProject(projectId, vendorUid, inviteId);
+    setVendorMap((prev) => ({
+      ...prev,
+      [projectId]: (prev[projectId] ?? []).filter((v) => v.uid !== vendorUid),
+    }));
   }
 
   const active = projects.filter((p) => p.status === "active");
@@ -165,71 +198,151 @@ function ProjectsTab({ pmUid }: { pmUid: string }) {
           No projects yet.
         </div>
       ) : (
-        <div className="border border-outline-variant rounded overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-surface-container">
-              <tr>
-                <Th>Project</Th>
-                <Th>Address</Th>
-                <Th>Zip</Th>
-                <Th>Status</Th>
-                <Th>Created</Th>
-                <Th></Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant">
-              {projects.map((p) =>
-                editingId === p.id ? (
-                  <tr key={p.id}>
-                    <td colSpan={6} className="px-md py-md bg-surface-container-low">
-                      <ProjectForm
-                        initial={p}
-                        onSubmit={(data) => handleUpdate(p.id, data)}
-                        onCancel={() => setEditingId(null)}
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={p.id} className="bg-surface hover:bg-surface-container-low transition-colors">
-                    <td className="px-md py-sm text-body-md text-on-surface font-semibold">
+        <div className="border border-outline-variant rounded overflow-hidden divide-y divide-outline-variant">
+          {projects.map((p) => {
+            const isExpanded = expandedId === p.id;
+            const vendors = vendorMap[p.id] ?? [];
+            const hasVendors = vendors.length > 0;
+
+            if (editingId === p.id) {
+              return (
+                <div key={p.id} className="px-md py-md bg-surface-container-low">
+                  <ProjectForm
+                    initial={p}
+                    onSubmit={(data) => handleUpdate(p.id, data)}
+                    onCancel={() => setEditingId(null)}
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <div key={p.id}>
+                {/* Project row */}
+                <div className="bg-surface hover:bg-surface-container-low transition-colors px-md py-sm flex items-center gap-md">
+                  {/* Expand toggle */}
+                  <button
+                    onClick={() => handleExpand(p.id)}
+                    className="text-on-surface-variant hover:text-on-surface flex-shrink-0"
+                    aria-label={isExpanded ? "Collapse" : "Expand"}
+                  >
+                    <ChevronIcon open={isExpanded} />
+                  </button>
+
+                  <div className="flex-1 min-w-0 grid grid-cols-5 gap-md items-center">
+                    <p className="text-body-md text-on-surface font-semibold truncate col-span-2">
                       {p.name}
-                    </td>
-                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                    </p>
+                    <p className="text-body-sm text-on-surface-variant truncate">
                       {p.address || "—"}
-                    </td>
-                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
-                      {p.zipCode}
-                    </td>
-                    <td className="px-md py-sm">
-                      <span
-                        className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
-                          p.status === "active"
-                            ? "bg-tier-2-bg text-on-surface"
-                            : "bg-surface-container text-on-surface-variant"
-                        }`}
-                      >
-                        {p.status === "active" ? "Active" : "Closed"}
-                      </span>
-                    </td>
-                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                    </p>
+                    <span
+                      className={`inline-block text-body-sm px-sm py-xs rounded font-semibold w-fit ${
+                        p.status === "active"
+                          ? "bg-tier-2-bg text-on-surface"
+                          : "bg-surface-container text-on-surface-variant"
+                      }`}
+                    >
+                      {p.status === "active" ? "Active" : "Closed"}
+                    </span>
+                    <p className="text-body-sm text-on-surface-variant">
                       {formatDate(p.createdAt)}
-                    </td>
-                    <td className="px-md py-sm">
-                      <button
-                        className="btn-tertiary text-body-sm"
-                        onClick={() => setEditingId(p.id)}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                )
-              )}
-            </tbody>
-          </table>
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-xs flex-shrink-0">
+                    <button
+                      className="btn-tertiary text-body-sm"
+                      onClick={() => { setEditingId(p.id); setExpandedId(null); }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="text-body-sm text-error hover:underline disabled:opacity-30 disabled:cursor-not-allowed px-xs py-xs"
+                      onClick={() => handleDelete(p.id)}
+                      disabled={isExpanded && hasVendors}
+                      title={hasVendors ? "Remove all contractors before deleting" : "Delete project"}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expanded vendor panel */}
+                {isExpanded && (
+                  <div className="bg-surface-container-low border-t border-outline-variant px-xl py-md">
+                    {loadingVendors === p.id ? (
+                      <p className="text-body-sm text-on-surface-variant">Loading contractors…</p>
+                    ) : vendors.length === 0 ? (
+                      <p className="text-body-sm text-on-surface-variant italic">
+                        No contractors assigned to this project.
+                      </p>
+                    ) : (
+                      <div className="space-y-xs">
+                        <p className="text-label-caps uppercase text-on-surface-variant mb-sm">
+                          Contractors ({vendors.length})
+                        </p>
+                        {vendors.map((v) => (
+                          <div
+                            key={v.uid}
+                            className="flex items-center justify-between gap-md py-sm border-b border-outline-variant last:border-0"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-body-md text-on-surface font-semibold">
+                                {v.businessName}
+                              </p>
+                              <div className="flex flex-wrap gap-md mt-xs">
+                                {v.contactEmail && (
+                                  <a
+                                    href={`mailto:${v.contactEmail}`}
+                                    className="text-body-sm text-primary hover:underline"
+                                  >
+                                    {v.contactEmail}
+                                  </a>
+                                )}
+                                {v.phone && (
+                                  <a
+                                    href={`tel:${v.phone}`}
+                                    className="text-body-sm text-on-surface-variant hover:text-on-surface"
+                                  >
+                                    {v.phone}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              className="text-body-sm text-error hover:underline flex-shrink-0"
+                              onClick={() => handleRemoveVendor(p.id, v.uid, v.inviteId)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className={`transition-transform ${open ? "rotate-90" : ""}`}
+    >
+      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
