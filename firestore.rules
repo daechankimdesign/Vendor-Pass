@@ -41,6 +41,9 @@ service cloud.firestore {
         request.resource.data.role in ['property_manager', 'vendor'] &&
         request.resource.data.createdAt == request.time;
       allow read: if isOwner(uid);
+      // Vendors need to read PM display names for their clients list
+      allow read: if isSignedIn() &&
+        exists(/databases/$(database)/documents/vendors/$(request.auth.uid)/pmRelationships/$(uid));
       allow update: if isOwner(uid) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(
           ['displayName', 'companyName', 'phone', 'title']
@@ -124,6 +127,13 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vendorStatus']);
       allow delete: if isOwner(vendorUid);
       allow read: if isAdmin();
+    }
+
+    match /projects/{projectId}/messages/{messageId} {
+      allow read, create: if isSignedIn() && (
+        get(/databases/$(database)/documents/projects/$(projectId)).data.pmUid == request.auth.uid ||
+        exists(/databases/$(database)/documents/projects/$(projectId)/vendors/$(request.auth.uid))
+      );
     }
 
     // ── invites ────────────────────────────────────────────────────────────────

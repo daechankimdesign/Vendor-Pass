@@ -147,7 +147,7 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
     pick: "Select Project",
     new: "New Project",
     compose: "Add a Note",
-    sent: "Invite Sent",
+    sent: "Quote Request Sent",
   };
 
   return (
@@ -171,10 +171,10 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
               <CheckIcon />
             </div>
             <div>
-              <p className="text-h2 text-on-surface">Invite sent!</p>
+              <p className="text-h2 text-on-surface">Quote request sent!</p>
               {selectedProject && (
                 <p className="text-body-sm text-on-surface-variant mt-xs">
-                  The vendor has been invited to <span className="font-semibold text-on-surface">{selectedProject.name}</span>.
+                  Your quote request for <span className="font-semibold text-on-surface">{selectedProject.name}</span> has been sent.
                 </p>
               )}
               {note && (
@@ -377,7 +377,7 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
                 disabled={sending}
                 onClick={handleSend}
               >
-                {sending ? "Sending…" : "Send Invite"}
+                {sending ? "Sending…" : "Send Quote Request"}
               </button>
               <button className="btn-secondary" onClick={() => setView("pick")}>
                 Back

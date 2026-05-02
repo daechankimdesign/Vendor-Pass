@@ -9,6 +9,7 @@ import {
   writeBatch,
   query,
   where,
+  orderBy,
   serverTimestamp,
   Timestamp,
   DocumentReference,
@@ -116,6 +117,34 @@ export const invitesCol = () => collection(db, "invites") as CollectionReference
 export const inviteDoc = (id: string) => doc(db, "invites", id) as DocumentReference;
 
 export const leadsCol = () => collection(db, "leads") as CollectionReference;
+
+export const projectMessagesCol = (projectId: string) =>
+  collection(db, "projects", projectId, "messages") as CollectionReference;
+
+export interface ChatMessage {
+  id: string;
+  senderUid: string;
+  senderName: string;
+  senderRole: "property_manager" | "vendor";
+  text: string;
+  createdAt: { seconds: number; nanoseconds: number } | null;
+}
+
+export async function sendProjectMessage(
+  projectId: string,
+  senderUid: string,
+  senderName: string,
+  senderRole: "property_manager" | "vendor",
+  text: string
+): Promise<void> {
+  await addDoc(projectMessagesCol(projectId), {
+    senderUid,
+    senderName,
+    senderRole,
+    text,
+    createdAt: serverTimestamp(),
+  });
+}
 
 export const customDocumentsCol = (vendorUid: string) =>
   collection(db, "vendors", vendorUid, "customDocuments") as CollectionReference;

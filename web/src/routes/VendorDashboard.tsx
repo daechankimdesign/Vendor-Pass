@@ -38,6 +38,7 @@ import TierBadge from "../components/TierBadge";
 import DocumentUploader from "../components/DocumentUploader";
 import ExtractionForm from "../components/ExtractionForm";
 import LiabilityFooter from "../components/LiabilityFooter";
+import ProjectChat from "../components/ProjectChat";
 import { SERVICE_CATEGORIES, getCategoryLabel } from "../lib/categories";
 import type { ServiceCategory } from "../lib/categories";
 
@@ -537,6 +538,8 @@ function ProjectsPane({
   onDecline,
   onDrop,
   onStatusChange,
+  currentUid,
+  currentName,
 }: {
   invites: Array<Invite & { id: string }>;
   projects: Array<Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus }>;
@@ -544,16 +547,18 @@ function ProjectsPane({
   onDecline: (id: string) => void;
   onDrop: (projectId: string, inviteId: string) => Promise<void>;
   onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
+  currentUid: string;
+  currentName: string;
 }) {
   const pending = invites.filter((i) => i.status === "pending");
 
   return (
     <div className="space-y-lg">
-      {/* Pending invites */}
+      {/* Pending quote requests */}
       {pending.length > 0 && (
         <section>
           <h2 className="text-h2 text-on-surface mb-md">
-            Pending Invites
+            Quote Requests
             <span className="ml-sm text-xs bg-error text-white rounded-full px-sm py-xs font-bold">
               {pending.length}
             </span>
@@ -583,7 +588,7 @@ function ProjectsPane({
 
                 {/* PM contact info */}
                 <div>
-                  <p className="text-label-caps uppercase text-on-surface-variant mb-xs">From</p>
+                  <p className="text-label-caps uppercase text-on-surface-variant mb-xs">Requested by</p>
                   <p className="text-body-md text-on-surface font-semibold">
                     {invite.pmDisplayName || "A property manager"}
                   </p>
@@ -655,7 +660,7 @@ function ProjectsPane({
         <h2 className="text-h2 text-on-surface mb-md">My Projects</h2>
         {projects.length === 0 ? (
           <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
-            No projects yet. Projects appear after accepting an invite.
+            No projects yet. Projects appear after accepting a quote request.
           </div>
         ) : (
           <div className="border border-outline-variant rounded overflow-hidden">
@@ -676,6 +681,8 @@ function ProjectsPane({
                     project={project}
                     onDrop={onDrop}
                     onStatusChange={onStatusChange}
+                    currentUid={currentUid}
+                    currentName={currentName}
                   />
                 ))}
               </tbody>
@@ -693,15 +700,31 @@ const VENDOR_STATUS_OPTIONS: { value: VendorProjectStatus; label: string; classe
   { value: "completed", label: "Completed", classes: "bg-surface-container text-on-surface-variant" },
 ];
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"
+      className={`transition-transform ${open ? "rotate-180" : ""}`}
+    >
+      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ProjectRow({
   project,
   onDrop,
   onStatusChange,
+  currentUid,
+  currentName,
 }: {
   project: Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus };
   onDrop: (projectId: string, inviteId: string) => Promise<void>;
   onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
+  currentUid: string;
+  currentName: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -724,9 +747,15 @@ function ProjectRow({
 
   return (
     <>
-      <tr className="bg-surface hover:bg-surface-container-low transition-colors">
-        <td className="px-md py-sm text-body-md text-on-surface font-semibold">
-          {project.name}
+      <tr
+        className="bg-surface hover:bg-surface-container-low transition-colors cursor-pointer"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <td className="px-md py-sm">
+          <div className="flex items-center gap-sm">
+            <ChevronIcon open={expanded} />
+            <span className="text-body-md text-on-surface font-semibold">{project.name}</span>
+          </div>
         </td>
         <td className="px-md py-sm text-body-sm text-on-surface-variant">
           {project.address}
@@ -742,7 +771,7 @@ function ProjectRow({
             {project.status === "active" ? "Active" : "Closed"}
           </span>
         </td>
-        <td className="px-md py-sm">
+        <td className="px-md py-sm" onClick={(e) => e.stopPropagation()}>
           <select
             value={project.vendorStatus}
             onChange={handleStatusChange}
@@ -754,7 +783,7 @@ function ProjectRow({
             ))}
           </select>
         </td>
-        <td className="px-md py-sm text-right">
+        <td className="px-md py-sm text-right" onClick={(e) => e.stopPropagation()}>
           <button
             className="text-body-sm text-error hover:underline"
             onClick={() => setShowConfirm(true)}
@@ -763,6 +792,20 @@ function ProjectRow({
           </button>
         </td>
       </tr>
+
+      {/* Expanded chat panel */}
+      {expanded && (
+        <tr key={`${project.id}-chat`}>
+          <td colSpan={5} className="px-lg py-md bg-surface-container-low border-t border-outline-variant">
+            <ProjectChat
+              projectId={project.id}
+              currentUid={currentUid}
+              currentName={currentName}
+              currentRole="vendor"
+            />
+          </td>
+        </tr>
+      )}
 
       {/* Inline confirmation row */}
       {showConfirm && (
@@ -1289,6 +1332,8 @@ export default function VendorDashboard() {
               onDecline={handleDecline}
               onDrop={handleDropProject}
               onStatusChange={handleUpdateProjectStatus}
+              currentUid={uid}
+              currentName={profile?.businessName ?? "Vendor"}
             />
           )}
 

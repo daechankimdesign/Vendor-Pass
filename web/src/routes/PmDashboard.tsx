@@ -21,6 +21,7 @@ import type { VendorDocument, DocType } from "../lib/docTypes";
 import { DOC_TYPE_ORDER, computeOverallTier } from "../lib/docTypes";
 import TierBadge from "../components/TierBadge";
 import InviteVendorModal from "../components/InviteVendorModal";
+import ProjectChat from "../components/ProjectChat";
 import LiabilityFooter from "../components/LiabilityFooter";
 
 type Tab = "projects" | "roster" | "profile";
@@ -111,7 +112,7 @@ function Sidebar({
 
 // ── Projects tab ──────────────────────────────────────────────────────────────
 
-function ProjectsTab({ pmUid }: { pmUid: string }) {
+function ProjectsTab({ pmUid, pmName }: { pmUid: string; pmName: string }) {
   const [projects, setProjects] = useState<Array<Project & { id: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -320,6 +321,16 @@ function ProjectsTab({ pmUid }: { pmUid: string }) {
                         ))}
                       </div>
                     )}
+
+                    {/* Project chat */}
+                    <div className="mt-md">
+                      <ProjectChat
+                        projectId={p.id}
+                        currentUid={pmUid}
+                        currentName={pmName}
+                        currentRole="property_manager"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -446,7 +457,7 @@ function SentInvitesSection({ pmUid }: { pmUid: string }) {
   return (
     <section className="mb-lg">
       <h2 className="text-h2 text-on-surface mb-md flex items-center gap-sm">
-        Pending Invites
+        Sent Quote Requests
         <span className="text-xs bg-primary-container text-on-surface rounded-full px-sm py-xs font-bold">
           {invites.length}
         </span>
@@ -562,7 +573,7 @@ function RosterTab({ pmUid }: { pmUid: string }) {
           <StatCard label="Unverified" value={unverified} accent="text-on-surface-variant" />
         </div>
         <button className="btn-secondary" onClick={() => setInviteOpen(true)}>
-          Invite by Email
+          Request Quote by Email
         </button>
       </div>
 
@@ -570,7 +581,7 @@ function RosterTab({ pmUid }: { pmUid: string }) {
         <p className="text-body-md text-on-surface-variant">Loading roster…</p>
       ) : rows.length === 0 ? (
         <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
-          No vendors yet. Invite vendors from Search or by email.
+          No vendors yet. Request quotes from Search or by email.
         </div>
       ) : (
         <div className="border border-outline-variant rounded overflow-hidden">
@@ -693,7 +704,7 @@ function ProfileTab({ pmUid }: { pmUid: string }) {
       <div className="card space-y-md">
         <h2 className="text-h2 text-on-surface">Your Profile</h2>
         <p className="text-body-sm text-on-surface-variant">
-          This information is shown to vendors when you invite them to a project.
+          This information is shown to vendors when you send them a quote request.
         </p>
         <form onSubmit={handleSubmit} className="space-y-md">
           <FormField label="Full name" required>
@@ -835,7 +846,7 @@ export default function PmDashboard() {
         {/* Tab content */}
         <main className="flex-1 px-xl py-lg max-w-6xl w-full">
           {tab === "projects" && profile && (
-            <ProjectsTab pmUid={profile.uid} />
+            <ProjectsTab pmUid={profile.uid} pmName={profile.displayName || "Property Manager"} />
           )}
 
           {tab === "roster" && profile && (

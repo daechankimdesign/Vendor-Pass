@@ -350,7 +350,7 @@ function VendorDetailModal({
               className="btn-primary w-full"
               onClick={onInvite}
             >
-              Invite to Project
+              Request Quote
             </button>
           )}
           {isLoggedIn && isPm && vendor.demo && (

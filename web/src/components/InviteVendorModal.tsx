@@ -53,7 +53,7 @@ export default function InviteVendorModal({ projectId, onClose, onInvited }: Pro
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="flex items-center justify-between mb-lg">
-          <h2 className="text-h1 text-on-surface">Invite Vendor by Email</h2>
+          <h2 className="text-h1 text-on-surface">Request Quote by Email</h2>
           <button
             className="text-on-surface-variant hover:text-on-surface"
             onClick={onClose}
@@ -66,7 +66,7 @@ export default function InviteVendorModal({ projectId, onClose, onInvited }: Pro
         {sent ? (
           <div className="space-y-md">
             <p className="text-body-md text-on-surface">
-              Invite sent to <strong>{email}</strong>.
+              Quote request sent to <strong>{email}</strong>.
             </p>
             <p className="text-body-sm text-on-surface-variant">
               If they don't have an account, they'll receive a signup link valid for 14 days.
@@ -99,7 +99,7 @@ export default function InviteVendorModal({ projectId, onClose, onInvited }: Pro
 
             <div className="flex gap-sm">
               <button type="submit" className="btn-primary flex-1" disabled={sending}>
-                {sending ? "Sending…" : "Send Invite"}
+                {sending ? "Sending…" : "Send Quote Request"}
               </button>
               <button type="button" className="btn-secondary" onClick={onClose}>
                 Cancel
