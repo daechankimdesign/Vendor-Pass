@@ -63,6 +63,16 @@ export interface Invite {
   source: "search" | "email";
   createdAt: Timestamp;
   expiresAt: Timestamp;
+  // Denormalized PM info
+  pmDisplayName?: string;
+  pmCompanyName?: string;
+  pmEmail?: string;
+  pmPhone?: string;
+  // Denormalized project info
+  projectName?: string;
+  projectAddress?: string;
+  projectZip?: string;
+  projectDescription?: string;
 }
 
 export interface PmRelationship {
@@ -201,25 +211,38 @@ export async function updateProject(
   await updateDoc(projectDoc(projectId), data as Record<string, unknown>);
 }
 
-export async function createInvite(
-  pmUid: string,
-  vendorUid: string,
-  vendorEmail: string,
-  projectId: string,
-  source: "search" | "email"
-): Promise<string> {
+export interface CreateInviteOptions {
+  pmUid: string;
+  vendorUid: string;
+  vendorEmail: string;
+  projectId: string;
+  source: "search" | "email";
+  pmDisplayName?: string;
+  pmCompanyName?: string;
+  pmEmail?: string;
+  pmPhone?: string;
+  projectName?: string;
+  projectAddress?: string;
+  projectZip?: string;
+  projectDescription?: string;
+}
+
+export async function createInvite(opts: CreateInviteOptions): Promise<string> {
   const expiresAt = Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
   const ref = await addDoc(invitesCol(), {
-    pmUid,
-    vendorUid,
-    vendorEmail,
-    projectId,
-    source,
+    ...opts,
     status: "pending",
     createdAt: serverTimestamp(),
     expiresAt,
   });
   return ref.id;
+}
+
+export async function updatePmProfile(
+  uid: string,
+  fields: { displayName?: string; companyName?: string; phone?: string; title?: string }
+): Promise<void> {
+  await updateDoc(userDoc(uid), fields as Record<string, unknown>);
 }
 
 export async function acceptInvite(inviteId: string, vendorUid: string): Promise<void> {

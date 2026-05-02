@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getPmProjects, createProject, createInvite } from "../lib/firestore";
 import { useAuth } from "../contexts/AuthContext";
-import type { Project } from "../lib/firestore";
+import type { Project, CreateInviteOptions } from "../lib/firestore";
 
 interface Props {
   vendorUid: string;
@@ -40,13 +40,23 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
     setSending(true);
     setError(null);
     try {
-      await createInvite(
-        profile.uid,
+      const project = projects.find((p) => p.id === selectedProjectId);
+      const opts: CreateInviteOptions = {
+        pmUid: profile.uid,
         vendorUid,
-        vendorEmail ?? "",
-        selectedProjectId,
-        "search"
-      );
+        vendorEmail: vendorEmail ?? "",
+        projectId: selectedProjectId,
+        source: "search",
+        pmDisplayName: profile.displayName,
+        pmCompanyName: profile.companyName ?? "",
+        pmEmail: profile.email,
+        pmPhone: profile.phone ?? "",
+        projectName: project?.name ?? "",
+        projectAddress: project?.address ?? "",
+        projectZip: project?.zipCode ?? "",
+        projectDescription: project?.description ?? "",
+      };
+      await createInvite(opts);
       setView("sent");
       onInvited?.();
     } catch (err) {

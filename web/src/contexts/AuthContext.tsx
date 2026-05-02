@@ -18,6 +18,10 @@ export interface UserProfile {
   role: UserRole;
   displayName: string;
   createdAt: unknown;
+  // PM-only fields
+  companyName?: string;
+  phone?: string;
+  title?: string;
 }
 
 interface AuthContextValue {

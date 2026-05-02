@@ -10,6 +10,7 @@ import {
   pmRelationshipDoc,
   createProject,
   updateProject,
+  updatePmProfile,
 } from "../lib/firestore";
 import type { Project, VendorPublicProfile, PmRelationship } from "../lib/firestore";
 import type { VendorDocument, DocType } from "../lib/docTypes";
@@ -19,7 +20,7 @@ import TierBadge from "../components/TierBadge";
 import InviteVendorModal from "../components/InviteVendorModal";
 import LiabilityFooter from "../components/LiabilityFooter";
 
-type Tab = "search" | "projects" | "roster";
+type Tab = "search" | "projects" | "roster" | "profile";
 
 interface RosterRow {
   uid: string;
@@ -44,6 +45,7 @@ const NAV: { id: Tab; label: string; icon: string }[] = [
   { id: "search", label: "Search Vendors", icon: "🔍" },
   { id: "projects", label: "Projects", icon: "🏗️" },
   { id: "roster", label: "Roster", icon: "👥" },
+  { id: "profile", label: "Profile", icon: "⚙️" },
 ];
 
 function Sidebar({
@@ -482,6 +484,98 @@ function RosterTab({ pmUid }: { pmUid: string }) {
   );
 }
 
+// ── Profile tab ───────────────────────────────────────────────────────────────
+
+function ProfileTab({ pmUid }: { pmUid: string }) {
+  const { profile } = useAuth();
+  const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
+  const [companyName, setCompanyName] = useState(profile?.companyName ?? "");
+  const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [title, setTitle] = useState(profile?.title ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!displayName.trim()) { setError("Name is required."); return; }
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await updatePmProfile(pmUid, {
+        displayName: displayName.trim(),
+        companyName: companyName.trim(),
+        phone: phone.trim(),
+        title: title.trim(),
+      });
+      setSaved(true);
+    } catch {
+      setError("Failed to save profile.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="max-w-lg space-y-lg">
+      <div className="card space-y-md">
+        <h2 className="text-h2 text-on-surface">Your Profile</h2>
+        <p className="text-body-sm text-on-surface-variant">
+          This information is shown to vendors when you invite them to a project.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-md">
+          <FormField label="Full name" required>
+            <input
+              className="input"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Company / Organization">
+            <input
+              className="input"
+              placeholder="e.g. Acme Property Group"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Title">
+            <input
+              className="input"
+              placeholder="e.g. Property Manager"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Phone">
+            <input
+              className="input"
+              type="tel"
+              placeholder="e.g. (310) 555-0100"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          </FormField>
+          {error && <p className="text-body-sm text-error">{error}</p>}
+          {saved && <p className="text-body-sm text-primary">Profile saved.</p>}
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </form>
+      </div>
+
+      <div className="card">
+        <p className="text-label-caps uppercase text-on-surface-variant mb-xs">Email</p>
+        <p className="text-body-md text-on-surface">{profile?.email}</p>
+        <p className="text-body-sm text-on-surface-variant mt-xs">
+          Email cannot be changed here.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
 function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
@@ -542,6 +636,7 @@ export default function PmDashboard() {
     search: "Search Vendors",
     projects: "Projects",
     roster: "Roster",
+    profile: "Profile",
   };
 
   return (
@@ -574,6 +669,10 @@ export default function PmDashboard() {
 
           {tab === "roster" && profile && (
             <RosterTab pmUid={profile.uid} />
+          )}
+
+          {tab === "profile" && profile && (
+            <ProfileTab pmUid={profile.uid} />
           )}
 
           <LiabilityFooter />

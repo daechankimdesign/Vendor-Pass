@@ -42,7 +42,9 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time;
       allow read: if isOwner(uid);
       allow update: if isOwner(uid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['displayName', 'companyName', 'phone', 'title']
+        );
       allow read: if isAdmin();
       allow write: if isAdmin();
     }
@@ -127,7 +129,8 @@ service cloud.firestore {
       // remain Cloud Functions for atomic project + relationship writes.
       allow create: if isSignedIn() &&
         request.resource.data.pmUid == request.auth.uid &&
-        request.resource.data.keys().hasAll(['pmUid','projectId','status','source','createdAt','expiresAt']);
+        request.resource.data.keys().hasAll(['pmUid','projectId','status','source','createdAt','expiresAt']) &&
+        request.resource.data.status == 'pending';
       allow update, delete: if false;
       allow read: if isSignedIn() && resource.data.pmUid == request.auth.uid;
       allow read: if isSignedIn() && resource.data.vendorUid == request.auth.uid;

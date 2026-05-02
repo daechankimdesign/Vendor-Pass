@@ -539,6 +539,12 @@ function HeroShield() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Landing() {
+  const { user, profile } = useAuth();
+  const dashboardPath =
+    profile?.role === "property_manager" ? "/dashboard" :
+    profile?.role === "vendor" ? "/vendor" :
+    profile?.role === "admin" ? "/admin" : "/dashboard";
+
   const [allVendors, setAllVendors] = useState<DisplayVendor[]>([]);
   const [loadingVendors, setLoadingVendors] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState<DisplayVendor | null>(null);
@@ -640,8 +646,21 @@ export default function Landing() {
         <div className="page-container flex items-center justify-between h-14">
           <span className="text-h2 text-on-surface font-bold">VendorPass.</span>
           <div className="flex items-center gap-sm">
-            <Link to="/login" className="btn-tertiary text-body-sm">Sign in</Link>
-            <Link to="/signup" className="btn-primary">Add Your Business</Link>
+            {user ? (
+              <>
+                <span className="text-body-sm text-on-surface-variant hidden sm:block">
+                  {profile?.displayName || user.email}
+                </span>
+                <Link to={dashboardPath} className="btn-primary">
+                  Dashboard
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="btn-tertiary text-body-sm">Sign in</Link>
+                <Link to="/signup" className="btn-primary">Add Your Business</Link>
+              </>
+            )}
           </div>
         </div>
       </header>

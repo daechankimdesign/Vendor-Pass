@@ -265,31 +265,63 @@ function ProjectsPane({
               {pending.length}
             </span>
           </h2>
-          <div className="space-y-sm">
+          <div className="space-y-md">
             {pending.map((invite) => (
-              <div
-                key={invite.id}
-                className="card flex items-center justify-between gap-md"
-              >
+              <div key={invite.id} className="card space-y-md">
+                {/* Project info */}
                 <div>
-                  <p className="text-body-md text-on-surface font-semibold">
-                    Project invitation
+                  <p className="text-label-caps uppercase text-on-surface-variant mb-xs">Project</p>
+                  <p className="text-h2 text-on-surface">
+                    {invite.projectName || "Unnamed Project"}
                   </p>
-                  <p className="text-body-sm text-on-surface-variant">
-                    From {invite.vendorEmail}
-                  </p>
+                  {(invite.projectAddress || invite.projectZip) && (
+                    <p className="text-body-sm text-on-surface-variant mt-xs">
+                      {[invite.projectAddress, invite.projectZip].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {invite.projectDescription && (
+                    <p className="text-body-sm text-on-surface-variant mt-xs italic">
+                      "{invite.projectDescription}"
+                    </p>
+                  )}
                 </div>
-                <div className="flex gap-sm">
-                  <button
-                    className="btn-primary"
-                    onClick={() => onAccept(invite.id)}
-                  >
+
+                <div className="border-t border-outline-variant" />
+
+                {/* PM contact info */}
+                <div>
+                  <p className="text-label-caps uppercase text-on-surface-variant mb-xs">From</p>
+                  <p className="text-body-md text-on-surface font-semibold">
+                    {invite.pmDisplayName || "A property manager"}
+                  </p>
+                  {invite.pmCompanyName && (
+                    <p className="text-body-sm text-on-surface-variant">{invite.pmCompanyName}</p>
+                  )}
+                  <div className="mt-sm flex flex-wrap gap-md">
+                    {invite.pmEmail && (
+                      <a
+                        href={`mailto:${invite.pmEmail}`}
+                        className="text-body-sm text-primary hover:underline"
+                      >
+                        {invite.pmEmail}
+                      </a>
+                    )}
+                    {invite.pmPhone && (
+                      <a
+                        href={`tel:${invite.pmPhone}`}
+                        className="text-body-sm text-on-surface-variant hover:text-on-surface"
+                      >
+                        {invite.pmPhone}
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-sm pt-xs">
+                  <button className="btn-primary" onClick={() => onAccept(invite.id)}>
                     Accept
                   </button>
-                  <button
-                    className="btn-secondary"
-                    onClick={() => onDecline(invite.id)}
-                  >
+                  <button className="btn-secondary" onClick={() => onDecline(invite.id)}>
                     Decline
                   </button>
                 </div>

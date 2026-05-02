@@ -4,7 +4,10 @@ import { defineString } from "firebase-functions/params";
 import { DocumentProcessorServiceClient } from "@google-cloud/documentai";
 
 const db = admin.firestore();
-const documentAiClient = new DocumentProcessorServiceClient();
+// Regional endpoint required for processors created in the "us" location
+const documentAiClient = new DocumentProcessorServiceClient({
+  apiEndpoint: "us-documentai.googleapis.com",
+});
 
 // Document AI processor IDs — set via Firebase environment params before deploy:
 //   firebase functions:params:set BUSINESS_LICENSE_PROCESSOR_ID="projects/.../processors/..."
