@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       if (firebaseUser) {
         const snap = await getDoc(doc(db, "users", firebaseUser.uid));
-        setProfile(snap.exists() ? (snap.data() as UserProfile) : null);
+        setProfile(snap.exists() ? { uid: firebaseUser.uid, ...(snap.data() as Omit<UserProfile, "uid">) } : null);
       } else {
         setProfile(null);
       }
