@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase";
-import { getPmProjects, createProject } from "../lib/firestore";
+import { getPmProjects, createProject, createInvite } from "../lib/firestore";
 import { useAuth } from "../contexts/AuthContext";
 import type { Project } from "../lib/firestore";
 
@@ -42,14 +40,13 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
     setSending(true);
     setError(null);
     try {
-      const sendInvite = httpsCallable(functions, "sendInvite");
-      await sendInvite({
-        pmUid: profile.uid,
+      await createInvite(
+        profile.uid,
         vendorUid,
-        vendorEmail: vendorEmail ?? "",
-        projectId: selectedProjectId,
-        source: "search",
-      });
+        vendorEmail ?? "",
+        selectedProjectId,
+        "search"
+      );
       setView("sent");
       onInvited?.();
     } catch (err) {

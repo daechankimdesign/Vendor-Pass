@@ -123,9 +123,12 @@ service cloud.firestore {
 
     // ── invites ────────────────────────────────────────────────────────────────
     match /invites/{inviteId} {
-      // Invite writes go through Cloud Functions so project attachment and
-      // PM relationship creation remain atomic and server-validated.
-      allow create, update, delete: if false;
+      // PMs create invites directly from the client; acceptInvite/declineInvite
+      // remain Cloud Functions for atomic project + relationship writes.
+      allow create: if isSignedIn() &&
+        request.resource.data.pmUid == request.auth.uid &&
+        request.resource.data.keys().hasAll(['pmUid','projectId','status','source','createdAt','expiresAt']);
+      allow update, delete: if false;
       allow read: if isSignedIn() && resource.data.pmUid == request.auth.uid;
       allow read: if isSignedIn() && resource.data.vendorUid == request.auth.uid;
       allow read: if isSignedIn() && resource.data.vendorEmail == request.auth.token.email;

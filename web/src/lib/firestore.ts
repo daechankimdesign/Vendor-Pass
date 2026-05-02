@@ -201,6 +201,27 @@ export async function updateProject(
   await updateDoc(projectDoc(projectId), data as Record<string, unknown>);
 }
 
+export async function createInvite(
+  pmUid: string,
+  vendorUid: string,
+  vendorEmail: string,
+  projectId: string,
+  source: "search" | "email"
+): Promise<string> {
+  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
+  const ref = await addDoc(invitesCol(), {
+    pmUid,
+    vendorUid,
+    vendorEmail,
+    projectId,
+    source,
+    status: "pending",
+    createdAt: serverTimestamp(),
+    expiresAt,
+  });
+  return ref.id;
+}
+
 export async function acceptInvite(inviteId: string, vendorUid: string): Promise<void> {
   if (!vendorUid) throw new Error("Vendor UID is required.");
   const acceptInviteCallable = httpsCallable(functions, "acceptInvite");
