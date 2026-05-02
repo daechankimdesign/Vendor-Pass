@@ -9,7 +9,6 @@ import {
   writeBatch,
   query,
   where,
-  orderBy,
   serverTimestamp,
   Timestamp,
   DocumentReference,
