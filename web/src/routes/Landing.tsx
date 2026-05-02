@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { searchVendors, submitLead } from "../lib/firestore";
+import { getDiscoverableVendors, submitLead } from "../lib/firestore";
 import type { VendorPublicProfile } from "../lib/firestore";
 import { SERVICE_CATEGORIES, getCategoryLabel } from "../lib/categories";
 import type { ServiceCategory } from "../lib/categories";
@@ -17,9 +17,115 @@ declare global {
   }
 }
 
-type SearchResult = VendorPublicProfile & { uid: string };
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-// ── Category icons (emoji per service type) ───────────────────────────────────
+type DisplayVendor = VendorPublicProfile & { uid: string; demo?: boolean };
+
+// ── Hardcoded demo businesses ─────────────────────────────────────────────────
+
+const DEMO_VENDORS: DisplayVendor[] = [
+  {
+    uid: "demo-1",
+    businessName: "GreenScapes Landscaping",
+    businessZipCode: "90210",
+    serviceZipCodes: ["90210", "90211", "90212"],
+    categories: ["landscaping"],
+    discoverable: true,
+    overallTier: "verified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-2",
+    businessName: "ProFlow Plumbing",
+    businessZipCode: "90210",
+    serviceZipCodes: ["90210", "90213"],
+    categories: ["plumbing"],
+    discoverable: true,
+    overallTier: "verified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-3",
+    businessName: "Volt Logic Electric",
+    businessZipCode: "90211",
+    serviceZipCodes: ["90210", "90211", "90214"],
+    categories: ["electrical"],
+    discoverable: true,
+    overallTier: "self_verified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-4",
+    businessName: "Arctic Air HVAC",
+    businessZipCode: "90212",
+    serviceZipCodes: ["90210", "90212"],
+    categories: ["hvac"],
+    discoverable: true,
+    overallTier: "self_verified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-5",
+    businessName: "Fresh Coat Painting",
+    businessZipCode: "90210",
+    serviceZipCodes: ["90210", "90211"],
+    categories: ["painting"],
+    discoverable: true,
+    overallTier: "unverified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-6",
+    businessName: "Shield Pest Solutions",
+    businessZipCode: "90213",
+    serviceZipCodes: ["90210", "90213", "90214"],
+    categories: ["pest_control"],
+    discoverable: true,
+    overallTier: "verified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-7",
+    businessName: "All-Pro Handyman Services",
+    businessZipCode: "90211",
+    serviceZipCodes: ["90210", "90211", "90212"],
+    categories: ["general_handyman"],
+    discoverable: true,
+    overallTier: "unverified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-8",
+    businessName: "Blue River Plumbing Co.",
+    businessZipCode: "90214",
+    serviceZipCodes: ["90213", "90214"],
+    categories: ["plumbing", "general_handyman"],
+    discoverable: true,
+    overallTier: "self_verified",
+    createdAt: null as never,
+    demo: true,
+  },
+  {
+    uid: "demo-9",
+    businessName: "Precision Climate Control",
+    businessZipCode: "90212",
+    serviceZipCodes: ["90210", "90212", "90213"],
+    categories: ["hvac", "electrical"],
+    discoverable: true,
+    overallTier: "verified",
+    createdAt: null as never,
+    demo: true,
+  },
+];
+
+// ── Category icons ────────────────────────────────────────────────────────────
 
 const CATEGORY_ICONS: Record<ServiceCategory, string> = {
   plumbing: "🔧",
@@ -31,9 +137,9 @@ const CATEGORY_ICONS: Record<ServiceCategory, string> = {
   general_handyman: "🔨",
 };
 
-// ── Tier accent colors ────────────────────────────────────────────────────────
+// ── Tier helpers ──────────────────────────────────────────────────────────────
 
-function tierAccent(tier: VerificationTier | undefined) {
+function tierBar(tier: VerificationTier | undefined) {
   if (tier === "verified") return "bg-primary-container";
   if (tier === "self_verified") return "bg-tier-2-bg";
   return "bg-outline-variant";
@@ -41,25 +147,24 @@ function tierAccent(tier: VerificationTier | undefined) {
 
 // ── Vendor card ───────────────────────────────────────────────────────────────
 
-function VendorCard({ vendor }: { vendor: SearchResult }) {
-  const icon =
-    vendor.categories[0] ? CATEGORY_ICONS[vendor.categories[0]] : "🏢";
+function VendorCard({ vendor }: { vendor: DisplayVendor }) {
+  const icon = vendor.categories[0] ? CATEGORY_ICONS[vendor.categories[0]] : "🏢";
   const tier = vendor.overallTier;
 
   return (
     <div className="bg-surface-container-lowest border border-outline-variant rounded overflow-hidden flex flex-col">
       {/* Tier color bar */}
-      <div className={`h-1.5 w-full ${tierAccent(tier)}`} />
+      <div className={`h-1.5 w-full ${tierBar(tier)}`} />
 
       <div className="p-md flex flex-col flex-1">
         {/* Icon + name */}
         <div className="flex items-start gap-sm mb-sm">
-          <div className="w-10 h-10 rounded bg-surface-container flex items-center justify-center text-lg flex-shrink-0">
+          <div className="w-10 h-10 rounded bg-surface-container flex items-center justify-center text-xl flex-shrink-0">
             {icon}
           </div>
           <div className="min-w-0">
-            <p className="text-h2 text-on-surface leading-tight truncate">
-              {vendor.businessName || "—"}
+            <p className="text-h2 text-on-surface leading-tight">
+              {vendor.businessName}
             </p>
             <p className="text-body-sm text-on-surface-variant mt-xs">
               {vendor.categories.map(getCategoryLabel).join(" · ")}
@@ -67,7 +172,7 @@ function VendorCard({ vendor }: { vendor: SearchResult }) {
           </div>
         </div>
 
-        {/* Tier badge */}
+        {/* Tier badge + zip */}
         <div className="mt-auto pt-sm border-t border-outline-variant flex items-center justify-between">
           <TierChip tier={tier} />
           <span className="text-body-sm text-on-surface-variant">
@@ -76,7 +181,7 @@ function VendorCard({ vendor }: { vendor: SearchResult }) {
         </div>
       </div>
 
-      {/* CTA footer */}
+      {/* CTA */}
       <div className="px-md pb-md">
         <Link
           to="/signup"
@@ -93,7 +198,7 @@ function TierChip({ tier }: { tier: VerificationTier | undefined }) {
   if (tier === "verified") {
     return (
       <span className="inline-flex items-center gap-xs text-body-sm font-semibold text-on-primary bg-primary-container px-sm py-xs rounded">
-        <ShieldCheck /> Verified
+        <ShieldCheckIcon /> Verified
       </span>
     );
   }
@@ -105,13 +210,13 @@ function TierChip({ tier }: { tier: VerificationTier | undefined }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-xs text-body-sm text-on-surface-variant border border-tier-1-border px-sm py-xs rounded">
+    <span className="inline-flex items-center text-body-sm text-on-surface-variant border border-tier-1-border px-sm py-xs rounded">
       Unverified
     </span>
   );
 }
 
-// ── Info sidebar panels ───────────────────────────────────────────────────────
+// ── Sidebar panels ────────────────────────────────────────────────────────────
 
 function ComplianceTiersPanel() {
   return (
@@ -120,46 +225,34 @@ function ComplianceTiersPanel() {
         Compliance Tiers
       </p>
       <div className="space-y-md">
-        <TierRow
-          accent="bg-primary-container"
-          label="Tier 3: Verified"
-          labelColor="text-primary"
-          desc="Documentation reviewed and approved by VendorPass. Highest trust level."
-        />
-        <TierRow
-          accent="bg-tier-2-bg"
-          label="Tier 2: Self-Verified"
-          labelColor="text-on-surface"
-          desc="Documentation submitted by the vendor and awaiting admin review."
-        />
-        <TierRow
-          accent="bg-outline-variant"
-          label="Tier 1: Unverified"
-          labelColor="text-on-surface-variant"
-          desc="Basic profile only. No verified documentation on file."
-        />
-      </div>
-    </div>
-  );
-}
-
-function TierRow({
-  accent,
-  label,
-  labelColor,
-  desc,
-}: {
-  accent: string;
-  label: string;
-  labelColor: string;
-  desc: string;
-}) {
-  return (
-    <div className="flex gap-sm">
-      <div className={`w-1 rounded-full flex-shrink-0 ${accent}`} />
-      <div>
-        <p className={`text-body-sm font-semibold ${labelColor}`}>{label}</p>
-        <p className="text-body-sm text-on-surface-variant mt-xs">{desc}</p>
+        {[
+          {
+            bar: "bg-primary-container",
+            label: "Tier 3: Verified",
+            color: "text-primary",
+            desc: "Documents reviewed and approved by VendorPass. Highest trust level.",
+          },
+          {
+            bar: "bg-tier-2-bg border border-outline-variant",
+            label: "Tier 2: Self-Verified",
+            color: "text-on-surface",
+            desc: "Documentation submitted by the vendor, awaiting admin review.",
+          },
+          {
+            bar: "bg-outline-variant",
+            label: "Tier 1: Unverified",
+            color: "text-on-surface-variant",
+            desc: "Basic profile only. No verified documentation on file.",
+          },
+        ].map(({ bar, label, color, desc }) => (
+          <div key={label} className="flex gap-sm">
+            <div className={`w-1 rounded-full flex-shrink-0 ${bar}`} />
+            <div>
+              <p className={`text-body-sm font-semibold ${color}`}>{label}</p>
+              <p className="text-body-sm text-on-surface-variant mt-xs">{desc}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -189,23 +282,12 @@ function WhyVendorPassPanel() {
 }
 
 function VendorCTAPanel({
-  submitted,
-  email,
-  setEmail,
-  emailError,
-  setEmailError,
-  submitError,
-  submitting,
-  onSubmit,
+  submitted, email, setEmail, emailError, setEmailError,
+  submitError, submitting, onSubmit,
 }: {
-  submitted: boolean;
-  email: string;
-  setEmail: (v: string) => void;
-  emailError: string | null;
-  setEmailError: (v: string | null) => void;
-  submitError: string | null;
-  submitting: boolean;
-  onSubmit: (e: React.FormEvent) => void;
+  submitted: boolean; email: string; setEmail: (v: string) => void;
+  emailError: string | null; setEmailError: (v: string | null) => void;
+  submitError: string | null; submitting: boolean; onSubmit: (e: React.FormEvent) => void;
 }) {
   return (
     <div className="border border-outline-variant rounded bg-surface-container-lowest p-md">
@@ -216,7 +298,6 @@ function VendorCTAPanel({
       <Link to="/signup" className="btn-primary block text-center mb-md">
         Register Your Business
       </Link>
-
       {submitted ? (
         <p className="text-body-sm text-on-surface-variant text-center">
           You're on the list. We'll be in touch.
@@ -228,17 +309,10 @@ function VendorCTAPanel({
             className={`input w-full ${emailError ? "input-error" : ""}`}
             placeholder="Email for updates"
             value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              if (emailError) setEmailError(null);
-            }}
+            onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError(null); }}
           />
-          {emailError && (
-            <p className="text-body-sm text-error">{emailError}</p>
-          )}
-          {submitError && (
-            <p className="text-body-sm text-error">{submitError}</p>
-          )}
+          {emailError && <p className="text-body-sm text-error">{emailError}</p>}
+          {submitError && <p className="text-body-sm text-error">{submitError}</p>}
           <button type="submit" className="btn-secondary w-full" disabled={submitting}>
             {submitting ? "Joining…" : "Stay updated"}
           </button>
@@ -250,13 +324,11 @@ function VendorCTAPanel({
 
 // ── SVG icons ─────────────────────────────────────────────────────────────────
 
-function ShieldCheck() {
+function ShieldCheckIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path
-        d="M6 1L1.5 3v3c0 2.5 1.9 4.3 4.5 5 2.6-.7 4.5-2.5 4.5-5V3L6 1z"
-        stroke="currentColor" strokeWidth="1" fill="currentColor" fillOpacity="0.25"
-      />
+      <path d="M6 1L1.5 3v3c0 2.5 1.9 4.3 4.5 5 2.6-.7 4.5-2.5 4.5-5V3L6 1z"
+        stroke="currentColor" strokeWidth="1" fill="currentColor" fillOpacity="0.25" />
       <path d="M4 6l1.3 1.3L8 4.5" stroke="white" strokeWidth="1.4"
         strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -277,14 +349,9 @@ function HeroShield() {
   return (
     <svg width="160" height="160" viewBox="0 0 160 160" fill="none" aria-hidden="true"
       className="opacity-10">
-      <path
-        d="M80 10L20 35v45c0 35 25 62 60 70 35-8 60-35 60-70V35L80 10z"
-        fill="#0052cc"
-      />
-      <path
-        d="M55 80l16 16L105 60"
-        stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"
-      />
+      <path d="M80 10L20 35v45c0 35 25 62 60 70 35-8 60-35 60-70V35L80 10z" fill="#0052cc" />
+      <path d="M55 80l16 16L105 60" stroke="white" strokeWidth="8"
+        strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -292,19 +359,23 @@ function HeroShield() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Landing() {
+  const [allVendors, setAllVendors] = useState<DisplayVendor[]>([]);
+  const [loadingVendors, setLoadingVendors] = useState(true);
+
+  // Search / filter state
   const [category, setCategory] = useState<ServiceCategory | "">("");
   const [zip, setZip] = useState("");
-  const [results, setResults] = useState<SearchResult[] | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<{ category: ServiceCategory | ""; zip: string } | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  // Waitlist state
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Load reCAPTCHA
   useEffect(() => {
     const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
     if (!siteKey) return;
@@ -315,20 +386,48 @@ export default function Landing() {
     return () => { document.head.removeChild(script); };
   }, []);
 
-  async function handleSearch(e: React.FormEvent) {
+  // Load all real vendors on mount, merge with demo
+  useEffect(() => {
+    getDiscoverableVendors()
+      .then((real) => {
+        // Real vendors replace demo entries with same uid; keep remaining demos
+        const realUids = new Set(real.map((v) => v.uid));
+        const filteredDemo = DEMO_VENDORS.filter((d) => !realUids.has(d.uid));
+        setAllVendors([...real, ...filteredDemo]);
+      })
+      .catch(() => {
+        setAllVendors(DEMO_VENDORS);
+      })
+      .finally(() => setLoadingVendors(false));
+  }, []);
+
+  // Derived: filtered list
+  const displayVendors = (() => {
+    if (!activeFilter) return allVendors;
+    return allVendors.filter((v) => {
+      const catMatch =
+        !activeFilter.category || v.categories.includes(activeFilter.category as ServiceCategory);
+      const zipMatch =
+        !activeFilter.zip || v.serviceZipCodes?.includes(activeFilter.zip);
+      return catMatch && zipMatch;
+    });
+  })();
+
+  function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setSearchError(null);
-    if (!category) { setSearchError("Please select a service category."); return; }
-    if (!/^\d{5}$/.test(zip)) { setSearchError("Enter a valid 5-digit zip code."); return; }
-    setSearching(true);
-    setSearched(true);
-    try {
-      setResults(await searchVendors(category as ServiceCategory, zip));
-    } catch {
-      setSearchError("Search failed. Please try again.");
-    } finally {
-      setSearching(false);
+    if (zip && !/^\d{5}$/.test(zip)) {
+      setSearchError("Enter a valid 5-digit zip code.");
+      return;
     }
+    setActiveFilter({ category, zip });
+  }
+
+  function clearFilter() {
+    setCategory("");
+    setZip("");
+    setActiveFilter(null);
+    setSearchError(null);
   }
 
   async function handleWaitlist(e: React.FormEvent) {
@@ -370,7 +469,7 @@ export default function Landing() {
       <section className="bg-surface-container-lowest border-b border-outline-variant overflow-hidden">
         <div className="page-container py-xl flex items-center justify-between gap-lg">
           <div className="max-w-xl">
-            <h1 className="text-display text-on-surface" style={{ fontSize: "32px", lineHeight: "40px" }}>
+            <h1 className="text-on-surface font-bold" style={{ fontSize: "32px", lineHeight: "40px" }}>
               Find the right hands, locally.
             </h1>
             <p className="mt-sm text-body-md text-on-surface-variant max-w-md">
@@ -401,8 +500,8 @@ export default function Landing() {
                 aria-label="Zip code"
               />
 
-              <button type="submit" className="btn-primary px-lg" disabled={searching}>
-                {searching ? "Searching…" : "Search"}
+              <button type="submit" className="btn-primary px-lg">
+                Search
               </button>
             </form>
 
@@ -411,58 +510,53 @@ export default function Landing() {
             )}
           </div>
 
-          {/* Decorative shield */}
           <div className="hidden md:flex flex-shrink-0 items-center justify-center w-40 h-40">
             <HeroShield />
           </div>
         </div>
       </section>
 
-      {/* ── Body: results + sidebar ── */}
+      {/* ── Body ── */}
       <div className="flex-1">
         <div className="page-container py-lg flex gap-lg items-start">
 
-          {/* Main results area */}
+          {/* Main results */}
           <main className="flex-1 min-w-0">
-            {!searched && (
-              <div>
-                <p className="text-h2 text-on-surface mb-md">Registered Businesses</p>
-                <div className="flex items-center justify-center h-48 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant text-center">
-                  Select a category and zip code above to find local vendors.
-                </div>
-              </div>
-            )}
-
-            {searched && searching && (
-              <div className="flex items-center justify-center h-48 text-body-md text-on-surface-variant">
-                Searching…
-              </div>
-            )}
-
-            {searched && !searching && results !== null && (
-              <>
-                <div className="flex items-center justify-between mb-md">
-                  <p className="text-h2 text-on-surface">
-                    Registered Businesses
-                    <span className="ml-sm text-body-md text-on-surface-variant font-normal">
-                      ({results.length})
-                    </span>
-                  </p>
-                </div>
-
-                {results.length === 0 ? (
-                  <div className="flex items-center justify-center h-48 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant text-center px-lg">
-                    No vendors found in zip {zip} for this category.
-                    Try a nearby zip or a different category.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md">
-                    {results.map((vendor) => (
-                      <VendorCard key={vendor.uid} vendor={vendor} />
-                    ))}
-                  </div>
+            <div className="flex items-center justify-between mb-md flex-wrap gap-sm">
+              <p className="text-h2 text-on-surface">
+                Registered Businesses
+                {!loadingVendors && (
+                  <span className="ml-sm text-body-md text-on-surface-variant font-normal">
+                    ({displayVendors.length})
+                  </span>
                 )}
-              </>
+              </p>
+              {activeFilter && (
+                <button
+                  onClick={clearFilter}
+                  className="text-body-sm text-primary underline underline-offset-2"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
+
+            {loadingVendors ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-44 bg-surface-container rounded animate-pulse" />
+                ))}
+              </div>
+            ) : displayVendors.length === 0 ? (
+              <div className="flex items-center justify-center h-48 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant text-center px-lg">
+                No vendors match this filter. Try a different category or zip code.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md">
+                {displayVendors.map((vendor) => (
+                  <VendorCard key={vendor.uid} vendor={vendor} />
+                ))}
+              </div>
             )}
           </main>
 

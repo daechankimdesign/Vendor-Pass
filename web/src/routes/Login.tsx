@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getVendorProfile } from "../lib/firestore";
@@ -12,14 +12,24 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Redirect inside useEffect — never call navigate() during render
+  useEffect(() => {
+    if (!user) return;
+    if (!user.emailVerified) {
+      navigate("/verify-email", { replace: true });
+      return;
+    }
+    if (profile) {
+      redirectByRole(navigate, profile.role, profile.uid);
+    }
+  }, [user, profile, navigate]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
       await signIn(email, password);
-      // Auth state change handled by useEffect below
     } catch {
       setError("Invalid email or password.");
     } finally {
@@ -27,16 +37,8 @@ export default function Login() {
     }
   }
 
-  // Redirect once auth state updates
-  if (user && user.emailVerified && profile) {
-    redirectByRole(navigate, profile.role, profile.uid);
-    return null;
-  }
-
-  if (user && !user.emailVerified) {
-    navigate("/verify-email", { replace: true });
-    return null;
-  }
+  // Don't render the form if already redirecting
+  if (user) return null;
 
   return (
     <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-gutter">
