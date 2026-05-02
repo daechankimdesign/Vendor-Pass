@@ -26,6 +26,7 @@ interface AdminPromotePayload {
 }
 
 export const confirmVendorDocument = onCall(
+  { invoker: "public" },
   async (request: CallableRequest<ConfirmDocumentPayload>) => {
     const vendorUid = requireAuth(request);
     const docType = requireDocType(request.data?.docType);
@@ -65,6 +66,7 @@ export const confirmVendorDocument = onCall(
 );
 
 export const adminPromoteDocument = onCall(
+  { invoker: "public" },
   async (request: CallableRequest<AdminPromotePayload>) => {
     const adminUid = requireAuth(request);
     await requireAdmin(adminUid);

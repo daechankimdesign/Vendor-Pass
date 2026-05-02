@@ -17,6 +17,7 @@ interface InviteData {
 }
 
 export const attachInviteToNewVendor = onCall(
+  { invoker: "public" },
   async (request: CallableRequest<InviteActionPayload>) => {
     const vendorUid = requireAuth(request);
     const inviteId = requireInviteId(request.data?.inviteId);
@@ -49,6 +50,7 @@ export const attachInviteToNewVendor = onCall(
 );
 
 export const acceptInvite = onCall(
+  { invoker: "public" },
   async (request: CallableRequest<InviteActionPayload>) => {
     const vendorUid = requireAuth(request);
     const inviteId = requireInviteId(request.data?.inviteId);
@@ -103,6 +105,7 @@ export const acceptInvite = onCall(
 );
 
 export const declineInvite = onCall(
+  { invoker: "public" },
   async (request: CallableRequest<InviteActionPayload>) => {
     const vendorUid = requireAuth(request);
     const inviteId = requireInviteId(request.data?.inviteId);
