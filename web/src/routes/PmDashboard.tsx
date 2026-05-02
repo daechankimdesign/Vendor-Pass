@@ -15,12 +15,11 @@ import {
 import type { Project, VendorPublicProfile, PmRelationship } from "../lib/firestore";
 import type { VendorDocument, DocType } from "../lib/docTypes";
 import { DOC_TYPE_ORDER, computeOverallTier } from "../lib/docTypes";
-import { SearchPane } from "./Search";
 import TierBadge from "../components/TierBadge";
 import InviteVendorModal from "../components/InviteVendorModal";
 import LiabilityFooter from "../components/LiabilityFooter";
 
-type Tab = "search" | "projects" | "roster" | "profile";
+type Tab = "projects" | "roster" | "profile";
 
 interface RosterRow {
   uid: string;
@@ -42,7 +41,6 @@ function formatDate(ts: { seconds: number } | null | undefined): string {
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 const NAV: { id: Tab; label: string; icon: string }[] = [
-  { id: "search", label: "Search Vendors", icon: "🔍" },
   { id: "projects", label: "Projects", icon: "🏗️" },
   { id: "roster", label: "Roster", icon: "👥" },
   { id: "profile", label: "Profile", icon: "⚙️" },
@@ -587,7 +585,7 @@ function StatCard({ label, value, accent }: { label: string; value: number; acce
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return (
     <th className="px-md py-sm text-label-caps uppercase text-on-surface-variant text-left font-semibold">
       {children}
@@ -621,7 +619,10 @@ export default function PmDashboard() {
   const { profile, logOut } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get("tab") as Tab) ?? "search";
+  const rawTab = params.get("tab");
+  const tab: Tab = (rawTab === "projects" || rawTab === "roster" || rawTab === "profile")
+    ? rawTab
+    : "projects";
 
   function setTab(t: Tab) {
     setParams({ tab: t });
@@ -633,7 +634,6 @@ export default function PmDashboard() {
   }
 
   const TAB_TITLES: Record<Tab, string> = {
-    search: "Search Vendors",
     projects: "Projects",
     roster: "Roster",
     profile: "Profile",
@@ -661,8 +661,6 @@ export default function PmDashboard() {
 
         {/* Tab content */}
         <main className="flex-1 px-xl py-lg max-w-6xl w-full">
-          {tab === "search" && <SearchPane />}
-
           {tab === "projects" && profile && (
             <ProjectsTab pmUid={profile.uid} />
           )}

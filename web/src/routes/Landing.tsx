@@ -7,6 +7,7 @@ import type { ServiceCategory } from "../lib/categories";
 import type { VerificationTier } from "../lib/docTypes";
 import { DOC_TYPE_ORDER, DOC_TYPE_SCHEMAS } from "../lib/docTypes";
 import { useAuth } from "../contexts/AuthContext";
+import ProjectPickerModal from "../components/ProjectPickerModal";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -228,9 +229,11 @@ function DocStatusBadge({ status }: { status: VerificationTier | "missing" }) {
 function VendorDetailModal({
   vendor,
   onClose,
+  onInvite,
 }: {
   vendor: DisplayVendor;
   onClose: () => void;
+  onInvite: () => void;
 }) {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
@@ -249,7 +252,7 @@ function VendorDetailModal({
   }, [onClose]);
 
   const isLoggedIn = !!user;
-  const isPm = profile?.role === "pm" || profile?.role === "property_manager";
+  const isPm = profile?.role === "property_manager";
 
   return (
     <div
@@ -345,7 +348,7 @@ function VendorDetailModal({
           {isLoggedIn && isPm && !vendor.demo && (
             <button
               className="btn-primary w-full"
-              onClick={() => { onClose(); navigate("/dashboard?tab=search"); }}
+              onClick={onInvite}
             >
               Invite to Project
             </button>
@@ -353,14 +356,8 @@ function VendorDetailModal({
           {isLoggedIn && isPm && vendor.demo && (
             <div className="space-y-sm">
               <p className="text-body-sm text-on-surface-variant">
-                This is a demo listing. Search real vendors from your dashboard.
+                This is a sample listing. Real vendors appear in search results once they register.
               </p>
-              <button
-                className="btn-primary w-full"
-                onClick={() => { onClose(); navigate("/dashboard?tab=search"); }}
-              >
-                Go to Dashboard
-              </button>
             </div>
           )}
           {isLoggedIn && !isPm && (
@@ -541,13 +538,14 @@ function HeroShield() {
 export default function Landing() {
   const { user, profile } = useAuth();
   const dashboardPath =
-    profile?.role === "property_manager" ? "/dashboard" :
+    profile?.role === "property_manager" ? "/dashboard?tab=projects" :
     profile?.role === "vendor" ? "/vendor" :
     profile?.role === "admin" ? "/admin" : "/dashboard";
 
   const [allVendors, setAllVendors] = useState<DisplayVendor[]>([]);
   const [loadingVendors, setLoadingVendors] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState<DisplayVendor | null>(null);
+  const [inviteVendor, setInviteVendor] = useState<DisplayVendor | null>(null);
 
   // Search / filter state
   const [category, setCategory] = useState<ServiceCategory | "">("");
@@ -779,10 +777,24 @@ export default function Landing() {
       </div>
 
       {/* ── Vendor detail modal ── */}
-      {selectedVendor && (
+      {selectedVendor && !inviteVendor && (
         <VendorDetailModal
           vendor={selectedVendor}
           onClose={() => setSelectedVendor(null)}
+          onInvite={() => {
+            setInviteVendor(selectedVendor);
+            setSelectedVendor(null);
+          }}
+        />
+      )}
+
+      {/* ── Project picker (invite flow from homepage) ── */}
+      {inviteVendor && (
+        <ProjectPickerModal
+          vendorUid={inviteVendor.uid}
+          vendorEmail=""
+          onClose={() => setInviteVendor(null)}
+          onInvited={() => setInviteVendor(null)}
         />
       )}
 
