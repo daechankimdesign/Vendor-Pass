@@ -2,5 +2,5 @@
 // Server-side enforcement is done via Firestore security rules (role === 'admin').
 // Update this list manually; never expose it to the UI as data.
 export const ADMIN_EMAILS: readonly string[] = [
-  // "admin@example.com",
+  "daechankim.design@gmail.com",
 ];
