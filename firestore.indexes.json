@@ -5,8 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "discoverable", "order": "ASCENDING" },
-        { "fieldPath": "categories", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "serviceZipCodes", "arrayConfig": "CONTAINS" }
+        { "fieldPath": "categories", "arrayConfig": "CONTAINS" }
       ]
     }
   ],
