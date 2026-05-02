@@ -73,6 +73,9 @@ export interface Invite {
   projectAddress?: string;
   projectZip?: string;
   projectDescription?: string;
+  // Message from PM
+  note?: string;
+  attachmentUrls?: string[];
 }
 
 export interface PmRelationship {
@@ -225,6 +228,8 @@ export interface CreateInviteOptions {
   projectAddress?: string;
   projectZip?: string;
   projectDescription?: string;
+  note?: string;
+  attachmentUrls?: string[];
 }
 
 export async function createInvite(opts: CreateInviteOptions): Promise<string> {

@@ -168,6 +168,10 @@ function DocumentsPane({
               const doc = docs[docType];
               const schema = DOC_TYPE_SCHEMAS[docType];
               const expired = isExpired(doc?.expirationDate);
+              const isProcessing = doc?.extractionStatus === "processing";
+              const needsConfirmation = doc && !isProcessing && !doc.vendorConfirmed;
+              const isExpanded = expandedDoc === docType;
+
               return (
                 <>
                   <tr key={docType} className="bg-surface hover:bg-surface-container-low transition-colors">
@@ -176,7 +180,15 @@ function DocumentsPane({
                     </td>
                     <td className="px-md py-sm">
                       {doc ? (
-                        <TierBadge tier={doc.tier} />
+                        <div className="space-y-xs">
+                          <TierBadge tier={doc.tier} />
+                          {isProcessing && (
+                            <p className="text-body-sm text-on-surface-variant">Extracting…</p>
+                          )}
+                          {needsConfirmation && (
+                            <p className="text-body-sm text-primary font-semibold">Review required</p>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-body-sm text-on-surface-variant">Not uploaded</span>
                       )}
@@ -204,23 +216,53 @@ function DocumentsPane({
                       )}
                     </td>
                     <td className="px-md py-sm">
-                      <button
-                        className="btn-tertiary text-body-sm"
-                        onClick={() =>
-                          setExpandedDoc(expandedDoc === docType ? null : docType)
-                        }
-                      >
-                        {expandedDoc === docType
-                          ? "Cancel"
-                          : doc
-                          ? "Re-upload"
-                          : "Upload"}
-                      </button>
+                      {isProcessing ? (
+                        <span className="text-body-sm text-on-surface-variant">Processing…</span>
+                      ) : needsConfirmation ? (
+                        <button
+                          className="btn-primary text-body-sm"
+                          onClick={() => setExpandedDoc(isExpanded ? null : docType)}
+                        >
+                          {isExpanded ? "Cancel" : "Review & Confirm"}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn-tertiary text-body-sm"
+                          onClick={() => setExpandedDoc(isExpanded ? null : docType)}
+                        >
+                          {isExpanded ? "Cancel" : doc ? "Re-upload" : "Upload"}
+                        </button>
+                      )}
                     </td>
                   </tr>
-                  {expandedDoc === docType && (
+
+                  {/* Extraction review form */}
+                  {isExpanded && needsConfirmation && (
+                    <tr key={`${docType}-form`}>
+                      <td
+                        colSpan={4}
+                        className="px-lg py-lg bg-surface-container-low border-t border-outline-variant"
+                      >
+                        <p className="text-label-caps uppercase text-on-surface-variant mb-md">
+                          Review Extracted Data — {schema.label}
+                        </p>
+                        <ExtractionForm
+                          vendorUid={uid}
+                          docType={docType}
+                          document={doc!}
+                          onSaved={() => setExpandedDoc(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Upload / re-upload */}
+                  {isExpanded && !needsConfirmation && (
                     <tr key={`${docType}-uploader`}>
-                      <td colSpan={4} className="px-md py-md bg-surface-container-low border-t border-outline-variant">
+                      <td
+                        colSpan={4}
+                        className="px-md py-md bg-surface-container-low border-t border-outline-variant"
+                      >
                         <DocumentUploader
                           vendorUid={uid}
                           docType={docType}
@@ -316,6 +358,46 @@ function ProjectsPane({
                     )}
                   </div>
                 </div>
+
+                {/* Note from PM */}
+                {invite.note && (
+                  <>
+                    <div className="border-t border-outline-variant" />
+                    <div>
+                      <p className="text-label-caps uppercase text-on-surface-variant mb-xs">Note</p>
+                      <p className="text-body-md text-on-surface whitespace-pre-wrap">{invite.note}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Attachments */}
+                {invite.attachmentUrls && invite.attachmentUrls.length > 0 && (
+                  <>
+                    <div className="border-t border-outline-variant" />
+                    <div>
+                      <p className="text-label-caps uppercase text-on-surface-variant mb-sm">Attachments</p>
+                      <ul className="space-y-xs">
+                        {invite.attachmentUrls.map((url, i) => {
+                          const raw = decodeURIComponent(url.split("/").pop()?.split("?")[0] ?? "");
+                          const filename = raw.replace(/^\d+_/, "") || `File ${i + 1}`;
+                          return (
+                            <li key={i}>
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
+                              >
+                                <AttachmentIcon />
+                                {filename}
+                              </a>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </>
+                )}
 
                 <div className="flex gap-sm pt-xs">
                   <button className="btn-primary" onClick={() => onAccept(invite.id)}>
@@ -852,5 +934,19 @@ export default function VendorDashboard() {
         </main>
       </div>
     </div>
+  );
+}
+
+function AttachmentIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+      <path
+        d="M11 5.5L6 10.5A3 3 0 012 6.5L7.5 1A1.75 1.75 0 0110 3.5L4.5 9A.5.5 0 014 8.5l5-5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
