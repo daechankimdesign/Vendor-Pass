@@ -11,8 +11,9 @@ import {
   createProject,
   updateProject,
   updatePmProfile,
+  getPmInvites,
 } from "../lib/firestore";
-import type { Project, VendorPublicProfile, PmRelationship } from "../lib/firestore";
+import type { Project, VendorPublicProfile, PmRelationship, Invite } from "../lib/firestore";
 import type { VendorDocument, DocType } from "../lib/docTypes";
 import { DOC_TYPE_ORDER, computeOverallTier } from "../lib/docTypes";
 import TierBadge from "../components/TierBadge";
@@ -308,6 +309,63 @@ function ProjectForm({
   );
 }
 
+// ── Sent invites section ───────────────────────────────────────────────────────
+
+function SentInvitesSection({ pmUid }: { pmUid: string }) {
+  const [invites, setInvites] = useState<Array<Invite & { id: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getPmInvites(pmUid)
+      .then((all) =>
+        setInvites(
+          all
+            .filter((i) => i.status === "pending" || i.status === "pending_signup")
+            .sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds)
+        )
+      )
+      .finally(() => setLoading(false));
+  }, [pmUid]);
+
+  if (loading) return null;
+  if (invites.length === 0) return null;
+
+  return (
+    <section className="mb-lg">
+      <h2 className="text-h2 text-on-surface mb-md flex items-center gap-sm">
+        Pending Invites
+        <span className="text-xs bg-primary-container text-on-surface rounded-full px-sm py-xs font-bold">
+          {invites.length}
+        </span>
+      </h2>
+      <div className="space-y-sm">
+        {invites.map((invite) => (
+          <div
+            key={invite.id}
+            className="border border-outline-variant rounded p-md bg-surface-container-lowest flex items-start justify-between gap-md"
+          >
+            <div className="min-w-0">
+              <p className="text-body-md text-on-surface font-semibold truncate">
+                {invite.projectName || "Unnamed Project"}
+              </p>
+              <p className="text-body-sm text-on-surface-variant mt-xs">
+                Sent to{" "}
+                <span className="font-medium text-on-surface">
+                  {invite.vendorEmail || "vendor"}
+                </span>
+                {invite.projectZip && ` · ${invite.projectZip}`}
+              </p>
+            </div>
+            <span className="flex-shrink-0 inline-flex items-center text-body-sm font-semibold px-sm py-xs rounded bg-tier-2-bg text-on-surface">
+              Awaiting response
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ── Roster tab ─────────────────────────────────────────────────────────────────
 
 function RosterTab({ pmUid }: { pmUid: string }) {
@@ -382,6 +440,8 @@ function RosterTab({ pmUid }: { pmUid: string }) {
 
   return (
     <div className="space-y-lg">
+      <SentInvitesSection pmUid={pmUid} />
+
       <div className="flex items-center justify-between">
         <div className="grid grid-cols-3 gap-md">
           <StatCard label="Verified" value={verified} accent="text-primary" />

@@ -25,6 +25,7 @@ import { DOC_TYPE_ORDER, DOC_TYPE_SCHEMAS } from "../lib/docTypes";
 import type { VendorDocument, DocType } from "../lib/docTypes";
 import TierBadge from "../components/TierBadge";
 import DocumentUploader from "../components/DocumentUploader";
+import ExtractionForm from "../components/ExtractionForm";
 import LiabilityFooter from "../components/LiabilityFooter";
 import { SERVICE_CATEGORIES, getCategoryLabel } from "../lib/categories";
 import type { ServiceCategory } from "../lib/categories";
@@ -376,25 +377,11 @@ function ProjectsPane({
                     <div className="border-t border-outline-variant" />
                     <div>
                       <p className="text-label-caps uppercase text-on-surface-variant mb-sm">Attachments</p>
-                      <ul className="space-y-xs">
-                        {invite.attachmentUrls.map((url, i) => {
-                          const raw = decodeURIComponent(url.split("/").pop()?.split("?")[0] ?? "");
-                          const filename = raw.replace(/^\d+_/, "") || `File ${i + 1}`;
-                          return (
-                            <li key={i}>
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
-                              >
-                                <AttachmentIcon />
-                                {filename}
-                              </a>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <div className="space-y-sm">
+                        {invite.attachmentUrls.map((url, i) => (
+                          <AttachmentPreview key={i} url={url} index={i} />
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
@@ -937,7 +924,58 @@ export default function VendorDashboard() {
   );
 }
 
-function AttachmentIcon() {
+function extractFilename(url: string, fallback: string): string {
+  try {
+    // Firebase Storage URLs: …/o/path%2Fencoded%2Ffilename.ext?alt=media…
+    const oSegment = url.split("/o/")[1];
+    if (oSegment) {
+      const decoded = decodeURIComponent(oSegment.split("?")[0]);
+      const base = decoded.split("/").pop() ?? "";
+      return base.replace(/^\d+_/, "") || fallback;
+    }
+  } catch { /* fall through */ }
+  return fallback;
+}
+
+const IMAGE_EXTS = /\.(jpe?g|png|gif|webp|svg)$/i;
+
+function AttachmentPreview({ url, index }: { url: string; index: number }) {
+  const filename = extractFilename(url, `File ${index + 1}`);
+  const isImage = IMAGE_EXTS.test(filename);
+
+  if (isImage) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block group"
+        aria-label={filename}
+      >
+        <img
+          src={url}
+          alt={filename}
+          className="max-h-48 rounded border border-outline-variant object-cover group-hover:opacity-90 transition-opacity"
+        />
+        <p className="text-body-sm text-on-surface-variant mt-xs">{filename}</p>
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
+    >
+      <PaperclipIcon />
+      {filename}
+    </a>
+  );
+}
+
+function PaperclipIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
       <path
