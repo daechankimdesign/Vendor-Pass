@@ -1,3 +1,92 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    font-family: Inter, system-ui, sans-serif;
+    background-color: #f9f9ff;
+    color: #101c2d;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  /* Primary button — Professional Blue, 4px radius, no gradient */
+  .btn-primary {
+    @apply bg-primary-container text-on-primary px-md py-sm rounded text-body-md font-semibold
+           hover:bg-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+           focus:outline-none focus:ring-2 focus:ring-primary-container focus:ring-offset-1;
+  }
+
+  /* Secondary button — light gray fill, dark gray text */
+  .btn-secondary {
+    @apply bg-secondary-container text-on-secondary-container px-md py-sm rounded text-body-md font-semibold
+           hover:bg-secondary-fixed-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+           focus:outline-none focus:ring-2 focus:ring-outline-variant focus:ring-offset-1;
+  }
+
+  /* Tertiary button — text only, underline on hover */
+  .btn-tertiary {
+    @apply text-primary text-body-md underline-offset-2 hover:underline
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Standard input field — 1px border, blue focus, no outer glow */
+  .input {
+    @apply w-full border border-outline-variant bg-surface-container-lowest rounded px-sm py-xs
+           text-body-md text-on-surface placeholder:text-on-surface-variant
+           focus:border-primary-container focus:outline-none
+           disabled:bg-surface-container disabled:text-on-surface-variant;
+  }
+
+  /* Input error state */
+  .input-error {
+    @apply border-error focus:border-error;
+  }
+
+  /* Card — white background, 1px border, 4px radius */
+  .card {
+    @apply bg-surface-container-lowest border border-tier-1-border rounded p-md;
+  }
+
+  /* Table header cell */
+  .th {
+    @apply text-label-caps uppercase text-on-surface-variant py-sm px-md border-b border-outline-variant text-left;
+  }
+
+  /* Table data cell */
+  .td {
+    @apply text-body-md text-on-surface py-sm px-md border-b border-tier-1-border;
+  }
+
+  /* Table row hover */
+  .tr-hover {
+    @apply hover:bg-[#F9FAFB] transition-colors;
+  }
+
+  /* Modal overlay + container */
+  .modal-overlay {
+    @apply fixed inset-0 bg-on-surface/20 flex items-center justify-center z-50 p-md;
+  }
+
+  .modal {
+    @apply bg-surface-container-lowest border border-tier-1-border rounded shadow-modal
+           w-full max-w-md p-lg;
+  }
+
+  /* Page container — max-width with gutter padding */
+  .page-container {
+    @apply max-w-container-max mx-auto px-gutter;
+  }
+
+  /* Section label — status badge that is NOT a pill */
+  .status-badge {
+    @apply inline-block px-sm py-xs text-body-sm rounded;
+  }
+}

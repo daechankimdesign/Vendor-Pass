@@ -28,7 +28,6 @@ service cloud.firestore {
     }
 
     // ── leads ─────────────────────────────────────────────────────────────────
-    // Create-only by anyone (waitlist), no read
     match /leads/{leadId} {
       allow create: if true;
       allow read, update, delete: if false;
@@ -41,17 +40,13 @@ service cloud.firestore {
     }
 
     // ── vendors (public discoverable fields) ──────────────────────────────────
-    // Split-collection: vendors/{vendorUid} holds public-safe fields only
-    // (businessName, businessZipCode, serviceZipCodes, categories, discoverable, createdAt)
-    // PII (contactEmail, phone) lives in vendors/{vendorUid}/private/contact
+    // Split-collection: vendors/{vendorUid} holds public-safe fields only.
+    // PII (contactEmail, phone) lives in vendors/{vendorUid}/private/contact.
     match /vendors/{vendorUid} {
-      // Vendor can read/write their own doc
       allow read, write: if isOwner(vendorUid);
-      // Admin can read all
       allow read: if isAdmin();
-      // Any PM with a relationship can read
       allow read: if hasPmRelationship(vendorUid);
-      // Any signed-in PM can read discoverable vendors (enables search)
+      // Any signed-in PM can read discoverable vendors (enables search + tier badge in results)
       allow read: if isPM() && resource.data.discoverable == true;
     }
 
@@ -65,10 +60,14 @@ service cloud.firestore {
     // Documents subcollection
     match /vendors/{vendorUid}/documents/{docType} {
       allow read: if isOwner(vendorUid) || isAdmin() || hasPmRelationship(vendorUid);
-      // Vendor can write most fields; tier and adminReviewed are admin-only
       allow create: if isOwner(vendorUid);
+      // Vendor may update any field EXCEPT adminReviewed.
+      // Vendor may set tier to 'unverified' or 'self_verified' only.
+      // Admin can set any tier including 'verified'.
       allow update: if isOwner(vendorUid) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['tier', 'adminReviewed']);
+        !request.resource.data.diff(resource.data).affectedKeys().has('adminReviewed') &&
+        (!request.resource.data.diff(resource.data).affectedKeys().has('tier') ||
+          request.resource.data.tier in ['unverified', 'self_verified']);
       allow update: if isAdmin();
     }
 
@@ -80,10 +79,8 @@ service cloud.firestore {
 
     // ── projects ──────────────────────────────────────────────────────────────
     match /projects/{projectId} {
-      // PM owner has full access
       allow read, write: if isSignedIn() && resource.data.pmUid == request.auth.uid;
       allow create: if isPM();
-      // Vendors attached to the project can read project details
       allow read: if isSignedIn() &&
         exists(/databases/$(database)/documents/projects/$(projectId)/vendors/$(request.auth.uid));
       allow read: if isAdmin();
@@ -98,12 +95,9 @@ service cloud.firestore {
 
     // ── invites ────────────────────────────────────────────────────────────────
     match /invites/{inviteId} {
-      // PM can create and read their own invites
       allow create: if isPM();
       allow read, update: if isSignedIn() && resource.data.pmUid == request.auth.uid;
-      // Vendor (by uid) can read and update status
       allow read, update: if isSignedIn() && resource.data.vendorUid == request.auth.uid;
-      // Pending-signup: any signed-in user whose email matches vendorEmail can read
       allow read: if isSignedIn() && resource.data.vendorEmail == request.auth.token.email;
       allow read, write: if isAdmin();
     }
@@ -112,8 +106,7 @@ service cloud.firestore {
     match /notifications/{notifId} {
       allow read: if isSignedIn() &&
         (resource.data.vendorUid == request.auth.uid || resource.data.pmUid == request.auth.uid);
-      allow write: if isAdmin();
-      // Cloud Functions write via admin SDK — covered by admin SDK bypass
+      // Cloud Functions write via admin SDK
     }
   }
 }
