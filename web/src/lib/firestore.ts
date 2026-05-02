@@ -277,7 +277,8 @@ export async function submitLead(email: string): Promise<void> {
   await addDoc(leadsCol(), { email, createdAt: serverTimestamp(), source: "landing" });
 }
 
-/** Search discoverable vendors by category and zip. Returns vendor docs with uid. */
+/** Search discoverable vendors by category and zip. Returns vendor docs with uid.
+ *  Firestore only allows one array-contains per query; zip is filtered client-side. */
 export async function searchVendors(
   category: ServiceCategory,
   zipCode: string
@@ -285,11 +286,15 @@ export async function searchVendors(
   const q = query(
     vendorsCol(),
     where("discoverable", "==", true),
-    where("categories", "array-contains", category),
-    where("serviceZipCodes", "array-contains", zipCode)
+    where("categories", "array-contains", category)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as VendorPublicProfile) }));
+  return snap.docs
+    .filter((d) => {
+      const data = d.data() as VendorPublicProfile;
+      return data.serviceZipCodes?.includes(zipCode);
+    })
+    .map((d) => ({ uid: d.id, ...(d.data() as VendorPublicProfile) }));
 }
 
 /** Collect all vendor UIDs that have worked with this PM (via project assignments). */
