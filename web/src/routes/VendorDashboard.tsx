@@ -1248,7 +1248,8 @@ function ProfilePane({
   const [copied, setCopied] = useState(false);
 
   function handleShare() {
-    const url = `${window.location.origin}/p/${uid}`;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const url = `${window.location.origin}${base}/p/${uid}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

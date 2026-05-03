@@ -442,11 +442,59 @@ function loadMapsApi(): Promise<void> {
 // ── Client-side location → zip codes via Places API (no Geocoding API needed) ─
 // Uses PlacesService.textSearch (Places API — already enabled) to get a city's
 // bounding box, then matches entries in ZIP_COORDS that fall inside that box.
+// A fast-path city lookup table is checked first so common city names always
+// resolve correctly without relying on Places API viewport accuracy.
 
 interface GeocodeResult { zips: string[]; center: { lat: number; lng: number } | null; }
 
 /** Miles → approximate degrees (1° lat ≈ 69 miles) */
 function milesToDeg(miles: number): number { return miles / 69; }
+
+/**
+ * Direct city-name → zip-codes lookup.
+ * Checked before the Places API so common searches always resolve reliably.
+ * Keys are lowercase; partial matches are supported (see geocodeToZips).
+ */
+const CITY_ZIP_LOOKUP: Record<string, string[]> = {
+  // Boston proper + inner neighborhoods
+  "boston":        ["02116","02115","02118","02119","02120","02127","02128","02129","02130","02134","02135"],
+  "back bay":      ["02116","02115"],
+  "south end":     ["02118","02119"],
+  "south boston":  ["02127","02128"],
+  "charlestown":   ["02129"],
+  "jamaica plain": ["02130"],
+  "allston":       ["02134","02135"],
+  // Inner ring
+  "cambridge":     ["02138","02139"],
+  "somerville":    ["02143","02144","02145"],
+  "brookline":     ["02445","02446"],
+  "waltham":       ["02451","02452"],
+  "newton":        ["02451","02452","02472"],
+  "watertown":     ["02472"],
+  // South Shore / Quincy
+  "quincy":        ["02169","02170","02171"],
+  "braintree":     ["02169","02184"],
+  // Metro West
+  "framingham":    ["01701","01702"],
+  "natick":        ["01701","01760"],
+  // Lowell / North Shore
+  "lowell":        ["01850","01851","01852","01854"],
+  "salem":         ["01970"],
+  "peabody":       ["01960"],
+  "lynn":          ["01940"],
+  // Central MA
+  "worcester":     ["01601","01602","01603","01604","01605"],
+  // Western MA
+  "springfield":   ["01101","01103","01104","01108"],
+  "northampton":   ["01060","01062","01063"],
+  // South Shore / Plymouth
+  "plymouth":      ["02360","02361","02364"],
+  "brockton":      ["02301","02302","02303"],
+  // Cape Cod
+  "cape cod":      ["02601","02630","02632","02646"],
+  "hyannis":       ["02601"],
+  "barnstable":    ["02630","02632"],
+};
 
 async function geocodeToZips(
   location: string,
@@ -455,11 +503,23 @@ async function geocodeToZips(
 ): Promise<GeocodeResult> {
   if (!MAPS_API_KEY || MAPS_API_KEY === "REPLACE_ME") return { zips: [], center: null };
   try {
-    // 5-digit zip passed directly
+    // ── Fast path 1: direct 5-digit zip ──
     const directZip = location.trim().match(/^(\d{5})$/);
     if (directZip) {
       const coords = ZIP_COORDS[directZip[1]];
       return { zips: [directZip[1]], center: coords ? { lat: coords[0], lng: coords[1] } : null };
+    }
+
+    // ── Fast path 2: known city name lookup (no API call needed) ──
+    const normalized = location.trim().toLowerCase().replace(/,\s*(ma|massachusetts|usa?)$/i, "").trim();
+    if (CITY_ZIP_LOOKUP[normalized]) {
+      const zips = CITY_ZIP_LOOKUP[normalized];
+      // Compute centroid from the first zip's coords as the map circle center
+      const firstCoords = ZIP_COORDS[zips[0]];
+      return {
+        zips,
+        center: firstCoords ? { lat: firstCoords[0], lng: firstCoords[1] } : null,
+      };
     }
 
     await loadMapsApi();

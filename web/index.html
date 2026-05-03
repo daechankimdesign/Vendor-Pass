@@ -2,6 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Restore path encoded by 404.html for GitHub Pages SPA routing
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var path = params.get("path");
+        if (path) {
+          params.delete("path");
+          var qs = params.toString();
+          window.history.replaceState(
+            null, null,
+            window.location.pathname + path + (qs ? "?" + qs : "") + window.location.hash
+          );
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VendorPass</title>
