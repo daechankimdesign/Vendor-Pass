@@ -106,7 +106,7 @@ export function SearchPane({ defaultZip }: SearchPaneProps) {
               className={`input ${zipInvalid ? "input-error" : ""}`}
               value={zip}
               onChange={(e) => setZip(e.target.value)}
-              placeholder="e.g. 90210"
+              placeholder="e.g. 02116"
               maxLength={5}
             />
             {zipInvalid && (

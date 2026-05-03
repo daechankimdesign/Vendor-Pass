@@ -175,5 +175,48 @@ The shape language is **Soft-Square**. A consistent 4px (0.25rem) radius is appl
 - On focus, the border transitions to Professional Blue with no outer glow.
 - Error states use a high-visibility red, but only for validation failures, never for "Unverified" status.
 
+## Icons
+
+All icons must use **[Lucide React](https://lucide.dev)** (`lucide-react` package). No custom inline SVG icon functions or emoji characters are permitted for UI icons.
+
+### Rules
+- Import icons directly from `lucide-react`: `import { ShieldCheck, Menu, X } from "lucide-react"`
+- Default size: `size={16}` for inline/action icons, `size={14}` for dense/badge contexts, `size={18}` for button icons
+- Always pass `aria-hidden` to decorative icons: `<ShieldCheck size={14} aria-hidden />`
+- Use `strokeWidth={1.5}` (Lucide default) — do not override unless a specific context requires it
+- Color is always inherited via `currentColor` — never hardcode a stroke or fill color on an icon
+- Animated spinner: use `<Loader2 size={14} className="animate-spin" aria-hidden />`
+
+### Icon → Lucide mapping
+| Context | Lucide component |
+|---------|-----------------|
+| Close / dismiss | `X` |
+| Mobile menu toggle | `Menu` |
+| Expand (right → down) | `ChevronRight` |
+| Collapse (down) | `ChevronDown` |
+| Back / previous | `ChevronLeft` |
+| Project chat | `MessageSquare` |
+| Search input | `Search` |
+| Location / zip | `MapPin` |
+| Loading spinner | `Loader2` |
+| Verified badge | `ShieldCheck` |
+| Self-verified badge | `Clock` |
+| Upload file | `Upload` |
+| Attachment / file | `File` |
+| Paperclip | `Paperclip` |
+| Success checkmark | `CheckCircle` |
+| Projects tab | `Building2` |
+| Roster / Clients tab | `Users` |
+| Messages tab | `MessageSquare` |
+| Profile / Settings tab | `Settings` |
+| Documents tab | `FileText` |
+| Category: plumbing | `Wrench` |
+| Category: landscaping | `Leaf` |
+| Category: electrical | `Zap` |
+| Category: hvac | `Wind` |
+| Category: painting | `Paintbrush` |
+| Category: pest_control | `Shield` |
+| Category: general_handyman | `Hammer` |
+
 ### Compliance Badges
 Small, rectangular tags used in rosters to show a vendor's current standing. These must strictly follow the Tier 1-3 color logic defined in the Colors section.

@@ -120,12 +120,31 @@ export const leadsCol = () => collection(db, "leads") as CollectionReference;
 export const projectMessagesCol = (projectId: string) =>
   collection(db, "projects", projectId, "messages") as CollectionReference;
 
+export interface ChatAttachment {
+  name: string;
+  url: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface ChatQuote {
+  amount: number;
+  description: string;
+  status: "pending" | "accepted" | "declined" | "countered";
+  counterAmount?: number;
+  respondedBy?: string;
+  respondedAt?: { seconds: number; nanoseconds: number } | null;
+}
+
 export interface ChatMessage {
   id: string;
   senderUid: string;
   senderName: string;
   senderRole: "property_manager" | "vendor";
-  text: string;
+  type: "text" | "quote";
+  text?: string;
+  attachments?: ChatAttachment[];
+  quote?: ChatQuote;
   createdAt: { seconds: number; nanoseconds: number } | null;
 }
 
@@ -134,15 +153,67 @@ export async function sendProjectMessage(
   senderUid: string,
   senderName: string,
   senderRole: "property_manager" | "vendor",
-  text: string
+  text: string,
+  attachments?: ChatAttachment[]
 ): Promise<void> {
   await addDoc(projectMessagesCol(projectId), {
     senderUid,
     senderName,
     senderRole,
+    type: "text",
     text,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
     createdAt: serverTimestamp(),
   });
+}
+
+export async function sendQuoteMessage(
+  projectId: string,
+  senderUid: string,
+  senderName: string,
+  senderRole: "property_manager" | "vendor",
+  amount: number,
+  description: string
+): Promise<void> {
+  await addDoc(projectMessagesCol(projectId), {
+    senderUid,
+    senderName,
+    senderRole,
+    type: "quote",
+    quote: { amount, description, status: "pending" },
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function respondToQuote(
+  projectId: string,
+  messageId: string,
+  response: "accepted" | "declined",
+  respondedBy: string
+): Promise<void> {
+  await updateDoc(doc(projectMessagesCol(projectId), messageId), {
+    "quote.status": response,
+    "quote.respondedBy": respondedBy,
+    "quote.respondedAt": serverTimestamp(),
+  });
+}
+
+export async function counterQuote(
+  projectId: string,
+  originalMessageId: string,
+  senderUid: string,
+  senderName: string,
+  senderRole: "property_manager" | "vendor",
+  counterAmount: number,
+  note: string
+): Promise<void> {
+  await updateDoc(doc(projectMessagesCol(projectId), originalMessageId), {
+    "quote.status": "countered",
+    "quote.counterAmount": counterAmount,
+    "quote.respondedBy": senderUid,
+    "quote.respondedAt": serverTimestamp(),
+  });
+  await sendQuoteMessage(projectId, senderUid, senderName, senderRole, counterAmount, note || "Counter offer");
 }
 
 export const customDocumentsCol = (vendorUid: string) =>
@@ -538,4 +609,24 @@ export async function addCustomDocument(
 
 export async function deleteCustomDocument(vendorUid: string, docId: string): Promise<void> {
   await deleteDoc(customDocumentDoc(vendorUid, docId));
+}
+
+// ── Natural language search ───────────────────────────────────────────────────
+
+export interface NlSearchParsed {
+  category: string | null;
+  zip: string | null;
+  location: string | null;
+}
+
+export interface NlSearchResult {
+  vendors: Array<VendorPublicProfile & { uid: string }>;
+  parsed: NlSearchParsed;
+  resolvedZips: string[];
+}
+
+export async function nlSearchVendors(query: string): Promise<NlSearchResult> {
+  const fn = httpsCallable<{ query: string }, NlSearchResult>(functions, "nlSearch");
+  const result = await fn({ query });
+  return result.data;
 }

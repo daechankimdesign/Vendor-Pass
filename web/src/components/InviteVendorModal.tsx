@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -59,7 +60,7 @@ export default function InviteVendorModal({ projectId, onClose, onInvited }: Pro
             onClick={onClose}
             aria-label="Close"
           >
-            <CloseIcon />
+            <X size={20} aria-hidden />
           </button>
         </div>
 
@@ -112,15 +113,3 @@ export default function InviteVendorModal({ projectId, onClose, onInvited }: Pro
   );
 }
 
-function CloseIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="M5 5l10 10M15 5L5 15"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}

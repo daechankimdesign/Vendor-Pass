@@ -1,0 +1,192 @@
+{
+  "endpoints": {
+    "processDocument": {
+      "platform": "gcfv2",
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "region": [
+        "us-east1"
+      ],
+      "labels": {},
+      "eventTrigger": {
+        "eventType": "google.cloud.storage.object.v1.finalized",
+        "eventFilters": {
+          "bucket": "vendorpass-495114.firebasestorage.app"
+        },
+        "retry": false
+      },
+      "entryPoint": "processDocument"
+    },
+    "sendInvite": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "sendInvite"
+    },
+    "scanExpirations": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "scheduleTrigger": {
+        "schedule": "0 9 * * *",
+        "retryConfig": {
+          "retryCount": null,
+          "maxDoublings": null,
+          "maxRetrySeconds": null,
+          "minBackoffSeconds": null,
+          "maxBackoffSeconds": null
+        },
+        "timeZone": null
+      },
+      "entryPoint": "scanExpirations"
+    },
+    "acceptInvite": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "acceptInvite"
+    },
+    "attachInviteToNewVendor": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "attachInviteToNewVendor"
+    },
+    "declineInvite": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "declineInvite"
+    },
+    "adminPromoteDocument": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "adminPromoteDocument"
+    },
+    "confirmVendorDocument": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "confirmVendorDocument"
+    },
+    "nlSearch": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": 30,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "region": [
+        "us-central1"
+      ],
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "nlSearch"
+    }
+  },
+  "specVersion": "v1alpha1",
+  "requiredAPIs": [
+    {
+      "api": "cloudscheduler.googleapis.com",
+      "reason": "Needed for scheduled functions."
+    }
+  ],
+  "extensions": {},
+  "params": [
+    {
+      "name": "BUSINESS_LICENSE_PROCESSOR_ID",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "W9_PROCESSOR_ID",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "COI_PROCESSOR_ID",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "APP_URL",
+      "type": "string",
+      "default": "https://vendorpass.web.app"
+    },
+    {
+      "name": "SENDGRID_API_KEY",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "MAPS_API_KEY",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

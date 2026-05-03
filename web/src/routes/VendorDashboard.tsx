@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  Menu, ChevronDown, MessageSquare, Paperclip, Upload, X,
+  FileText, Building2, Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { onSnapshot, getDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
@@ -38,11 +43,11 @@ import TierBadge from "../components/TierBadge";
 import DocumentUploader from "../components/DocumentUploader";
 import ExtractionForm from "../components/ExtractionForm";
 import LiabilityFooter from "../components/LiabilityFooter";
-import ProjectChat from "../components/ProjectChat";
+import MessagesTab from "../components/MessagesTab";
 import { SERVICE_CATEGORIES, getCategoryLabel } from "../lib/categories";
 import type { ServiceCategory } from "../lib/categories";
 
-type Tab = "documents" | "projects" | "clients";
+type Tab = "documents" | "projects" | "clients" | "messages";
 
 function formatDate(ts: { seconds: number } | null | undefined): string {
   if (!ts) return "—";
@@ -60,10 +65,11 @@ function isExpired(ts: { seconds: number } | null | undefined): boolean {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
-const NAV: { id: Tab; label: string; icon: string }[] = [
-  { id: "documents", label: "Profile & Documents", icon: "📄" },
-  { id: "projects", label: "Projects", icon: "🏗️" },
-  { id: "clients", label: "Clients", icon: "👥" },
+const NAV: { id: Tab; label: string; Icon: LucideIcon }[] = [
+  { id: "documents", label: "Profile & Documents", Icon: FileText },
+  { id: "projects", label: "Projects", Icon: Building2 },
+  { id: "clients", label: "Clients", Icon: Users },
+  { id: "messages", label: "Messages", Icon: MessageSquare },
 ];
 
 function Sidebar({
@@ -72,67 +78,97 @@ function Sidebar({
   profile,
   pendingCount,
   onSignOut,
+  mobileOpen,
+  onMobileClose,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
   profile: VendorPublicProfile | null;
   pendingCount: number;
   onSignOut: () => void;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }) {
   return (
-    <aside className="w-60 flex-shrink-0 bg-surface-container-lowest border-r border-outline-variant flex flex-col min-h-screen">
-      {/* Logo */}
-      <div className="px-lg py-md border-b border-outline-variant">
-        <Link to="/" className="text-h2 text-on-surface font-bold block">
-          VendorPass.
-        </Link>
-      </div>
-
-      {/* Business info */}
-      {profile && (
-        <div className="px-lg py-md border-b border-outline-variant">
-          <p className="text-body-md text-on-surface font-semibold truncate">
-            {profile.businessName || "Your Business"}
-          </p>
-          <div className="mt-xs">
-            <TierBadge tier={profile.overallTier} />
-          </div>
-        </div>
+    <>
+      {/* Mobile overlay backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 sm:hidden"
+          onClick={onMobileClose}
+          aria-hidden="true"
+        />
       )}
 
-      {/* Nav */}
-      <nav className="flex-1 px-sm py-md space-y-xs">
-        {NAV.map(({ id, label, icon }) => (
+      <aside
+        className={`
+          fixed sm:static top-0 left-0 h-screen sm:min-h-screen z-50
+          w-64 flex-shrink-0 bg-surface-container-lowest border-r border-outline-variant
+          flex flex-col overflow-y-auto
+          transition-transform duration-200 ease-in-out sm:transition-none sm:translate-x-0
+          ${mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}
+        `}
+      >
+        {/* Logo + mobile close */}
+        <div className="px-lg py-md border-b border-outline-variant flex items-center justify-between">
+          <Link to="/" className="text-h2 text-on-surface font-bold">
+            VendorPass.
+          </Link>
           <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={`w-full flex items-center gap-sm px-md py-sm rounded text-body-md transition-colors text-left ${
-              tab === id
-                ? "bg-primary-container text-on-surface font-semibold"
-                : "text-on-surface-variant hover:bg-surface-container"
-            }`}
+            className="sm:hidden p-xs text-on-surface-variant hover:text-on-surface"
+            onClick={onMobileClose}
+            aria-label="Close menu"
           >
-            <span>{icon}</span>
-            <span className="flex-1">{label}</span>
-            {id === "projects" && pendingCount > 0 && (
-              <span className="text-xs bg-error text-white rounded-full w-5 h-5 flex items-center justify-center font-bold">
-                {pendingCount}
-              </span>
-            )}
+            <X size={20} aria-hidden />
           </button>
-        ))}
-      </nav>
+        </div>
 
-      {/* Footer */}
-      <div className="px-lg py-md border-t border-outline-variant">
-        <button
-          className="text-body-sm text-on-surface-variant hover:text-on-surface"
-          onClick={onSignOut}
-        >
-          Sign out
-        </button>
-      </div>
-    </aside>
+        {/* Business info */}
+        {profile && (
+          <div className="px-lg py-md border-b border-outline-variant">
+            <p className="text-body-md text-on-surface font-semibold truncate">
+              {profile.businessName || "Your Business"}
+            </p>
+            <div className="mt-xs">
+              <TierBadge tier={profile.overallTier} />
+            </div>
+          </div>
+        )}
+
+        {/* Nav */}
+        <nav className="flex-1 px-sm py-md space-y-xs">
+          {NAV.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => { setTab(id); onMobileClose(); }}
+              className={`w-full flex items-center gap-sm px-md py-sm rounded text-body-md transition-colors text-left ${
+                tab === id
+                  ? "bg-primary-fixed text-on-primary-fixed font-semibold"
+                  : "text-on-surface-variant hover:bg-surface-container"
+              }`}
+            >
+              <Icon size={16} aria-hidden />
+              <span className="flex-1">{label}</span>
+              {id === "projects" && pendingCount > 0 && (
+                <span className="text-xs bg-error text-white rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className="px-lg py-md border-t border-outline-variant">
+          <button
+            className="text-body-sm text-on-surface-variant hover:text-on-surface"
+            onClick={onSignOut}
+          >
+            Sign out
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -149,25 +185,105 @@ function DocumentsPane({
 }) {
   const [expandedDoc, setExpandedDoc] = useState<DocType | null>(null);
 
-  const verifiedCount = DOC_TYPE_ORDER.filter(
-    (dt) => docs[dt]?.tier === "verified"
-  ).length;
-  const selfVerifiedCount = DOC_TYPE_ORDER.filter(
-    (dt) => docs[dt]?.tier === "self_verified"
-  ).length;
+  const verifiedCount = DOC_TYPE_ORDER.filter((dt) => docs[dt]?.tier === "verified").length;
+  const selfVerifiedCount = DOC_TYPE_ORDER.filter((dt) => docs[dt]?.tier === "self_verified").length;
   const missingCount = DOC_TYPE_ORDER.filter((dt) => !docs[dt]).length;
 
   return (
     <div className="space-y-lg">
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-md">
+      <div className="grid grid-cols-3 gap-sm sm:gap-md">
         <StatCard label="Verified" value={verifiedCount} accent="text-primary" />
         <StatCard label="Self-Verified" value={selfVerifiedCount} accent="text-on-surface" />
         <StatCard label="Not Uploaded" value={missingCount} accent="text-on-surface-variant" />
       </div>
 
-      {/* Document table */}
-      <div className="border border-outline-variant rounded overflow-hidden">
+      {/* ── Mobile card list ── */}
+      <div className="sm:hidden space-y-sm">
+        {DOC_TYPE_ORDER.map((docType) => {
+          const doc = docs[docType];
+          const schema = DOC_TYPE_SCHEMAS[docType];
+          const expired = isExpired(doc?.expirationDate);
+          const isProcessing = doc?.extractionStatus === "processing";
+          const needsConfirmation = doc && !isProcessing && !doc.vendorConfirmed;
+          const isExpanded = expandedDoc === docType;
+
+          return (
+            <div key={docType} className="border border-outline-variant rounded bg-surface">
+              <div className="p-md flex items-start justify-between gap-sm">
+                <div className="flex-1 min-w-0">
+                  <p className="text-body-md text-on-surface font-semibold">{schema.label}</p>
+                  <div className="mt-xs flex flex-wrap gap-xs items-center">
+                    {doc ? (
+                      <>
+                        <TierBadge tier={doc.tier} />
+                        {isProcessing && (
+                          <span className="text-body-sm text-on-surface-variant">Extracting…</span>
+                        )}
+                        {needsConfirmation && (
+                          <span className="text-body-sm text-primary font-semibold">Review required</span>
+                        )}
+                        {schema.hasExpiration && doc.expirationDate && (
+                          <span className={`text-body-sm ${expired ? "text-error font-semibold" : "text-on-surface-variant"}`}>
+                            {expired ? "Expired · " : "Exp. "}
+                            {formatDate(doc.expirationDate)}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-body-sm text-on-surface-variant">Not uploaded</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-shrink-0">
+                  {isProcessing ? (
+                    <span className="text-body-sm text-on-surface-variant">Processing…</span>
+                  ) : needsConfirmation ? (
+                    <button
+                      className="btn-primary text-body-sm"
+                      onClick={() => setExpandedDoc(isExpanded ? null : docType)}
+                    >
+                      {isExpanded ? "Cancel" : "Review"}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn-tertiary text-body-sm"
+                      onClick={() => setExpandedDoc(isExpanded ? null : docType)}
+                    >
+                      {isExpanded ? "Cancel" : doc ? "Re-upload" : "Upload"}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {isExpanded && needsConfirmation && (
+                <div className="px-md pb-md pt-sm border-t border-outline-variant bg-surface-container-low">
+                  <p className="text-label-caps uppercase text-on-surface-variant mb-md">
+                    Review Extracted Data — {schema.label}
+                  </p>
+                  <ExtractionForm
+                    vendorUid={uid}
+                    docType={docType}
+                    document={doc!}
+                    onSaved={() => setExpandedDoc(null)}
+                  />
+                </div>
+              )}
+              {isExpanded && !needsConfirmation && (
+                <div className="px-md pb-md pt-sm border-t border-outline-variant bg-surface-container-low">
+                  <DocumentUploader
+                    vendorUid={uid}
+                    docType={docType}
+                    onComplete={() => setExpandedDoc(null)}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Desktop table ── */}
+      <div className="hidden sm:block border border-outline-variant rounded overflow-hidden">
         <table className="w-full">
           <thead className="bg-surface-container">
             <tr>
@@ -210,15 +326,9 @@ function DocumentsPane({
                     <td className="px-md py-sm">
                       {schema.hasExpiration ? (
                         doc?.expirationDate ? (
-                          <span
-                            className={`text-body-sm font-semibold ${
-                              expired ? "text-error" : "text-on-surface"
-                            }`}
-                          >
+                          <span className={`text-body-sm font-semibold ${expired ? "text-error" : "text-on-surface"}`}>
                             {expired && (
-                              <span className="block text-xs uppercase tracking-wide text-error mb-xs">
-                                Expired
-                              </span>
+                              <span className="block text-xs uppercase tracking-wide text-error mb-xs">Expired</span>
                             )}
                             {formatDate(doc.expirationDate)}
                           </span>
@@ -250,13 +360,9 @@ function DocumentsPane({
                     </td>
                   </tr>
 
-                  {/* Extraction review form */}
                   {isExpanded && needsConfirmation && (
                     <tr key={`${docType}-form`}>
-                      <td
-                        colSpan={4}
-                        className="px-lg py-lg bg-surface-container-low border-t border-outline-variant"
-                      >
+                      <td colSpan={4} className="px-lg py-lg bg-surface-container-low border-t border-outline-variant">
                         <p className="text-label-caps uppercase text-on-surface-variant mb-md">
                           Review Extracted Data — {schema.label}
                         </p>
@@ -270,13 +376,9 @@ function DocumentsPane({
                     </tr>
                   )}
 
-                  {/* Upload / re-upload */}
                   {isExpanded && !needsConfirmation && (
                     <tr key={`${docType}-uploader`}>
-                      <td
-                        colSpan={4}
-                        className="px-md py-md bg-surface-container-low border-t border-outline-variant"
-                      >
+                      <td colSpan={4} className="px-md py-md bg-surface-container-low border-t border-outline-variant">
                         <DocumentUploader
                           vendorUid={uid}
                           docType={docType}
@@ -321,12 +423,7 @@ function AdditionalDocsSection({
         </button>
       </div>
 
-      {showForm && (
-        <AddCustomDocumentForm
-          uid={uid}
-          onSaved={() => setShowForm(false)}
-        />
-      )}
+      {showForm && <AddCustomDocumentForm uid={uid} onSaved={() => setShowForm(false)} />}
 
       {customDocs.length === 0 && !showForm ? (
         <div className="flex items-center justify-center h-24 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
@@ -334,27 +431,100 @@ function AdditionalDocsSection({
         </div>
       ) : (
         customDocs.length > 0 && (
-          <div className="border border-outline-variant rounded overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-surface-container">
-                <tr>
-                  <Th>Name</Th>
-                  <Th>Notes</Th>
-                  <Th>Added</Th>
-                  <Th>File</Th>
-                  <Th></Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant">
-                {customDocs.map((d) => (
-                  <CustomDocRow key={d.id} vendorUid={uid} doc={d} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Mobile card list */}
+            <div className="sm:hidden space-y-sm">
+              {customDocs.map((d) => (
+                <CustomDocCard key={d.id} vendorUid={uid} doc={d} />
+              ))}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden sm:block border border-outline-variant rounded overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-surface-container">
+                  <tr>
+                    <Th>Name</Th>
+                    <Th>Notes</Th>
+                    <Th>Added</Th>
+                    <Th>File</Th>
+                    <Th></Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant">
+                  {customDocs.map((d) => (
+                    <CustomDocRow key={d.id} vendorUid={uid} doc={d} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )
       )}
     </section>
+  );
+}
+
+function useCustomDocUrl(storagePath: string | undefined) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!storagePath) return;
+    getDownloadURL(storageRef(storage, storagePath))
+      .then(setUrl)
+      .catch(() => setUrl(null));
+  }, [storagePath]);
+  return url;
+}
+
+function CustomDocCard({
+  vendorUid,
+  doc,
+}: {
+  vendorUid: string;
+  doc: CustomDocument & { id: string };
+}) {
+  const downloadUrl = useCustomDocUrl(doc.storagePath);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${doc.name}"?`)) return;
+    setDeleting(true);
+    await deleteCustomDocument(vendorUid, doc.id);
+  }
+
+  return (
+    <div className="border border-outline-variant rounded bg-surface p-md space-y-xs">
+      <div className="flex items-start justify-between gap-sm">
+        <p className="text-body-md text-on-surface font-semibold">{doc.name}</p>
+        <button
+          className="text-body-sm text-error hover:underline disabled:opacity-40 flex-shrink-0"
+          onClick={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? "Deleting…" : "Delete"}
+        </button>
+      </div>
+      {doc.notes && <p className="text-body-sm text-on-surface-variant">{doc.notes}</p>}
+      <div className="flex items-center justify-between gap-sm">
+        <span className="text-body-sm text-on-surface-variant">
+          Added {formatDate(doc.uploadedAt as { seconds: number })}
+        </span>
+        {downloadUrl ? (
+          <a
+            href={downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-body-sm text-primary hover:underline truncate max-w-[160px]"
+          >
+            {doc.fileName}
+          </a>
+        ) : (
+          <span className="text-body-sm text-on-surface-variant truncate max-w-[160px]">
+            {doc.fileName}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -365,15 +535,8 @@ function CustomDocRow({
   vendorUid: string;
   doc: CustomDocument & { id: string };
 }) {
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const downloadUrl = useCustomDocUrl(doc.storagePath);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    if (!doc.storagePath) return;
-    getDownloadURL(storageRef(storage, doc.storagePath))
-      .then(setDownloadUrl)
-      .catch(() => setDownloadUrl(null));
-  }, [doc.storagePath]);
 
   async function handleDelete() {
     if (!confirm(`Delete "${doc.name}"?`)) return;
@@ -471,10 +634,7 @@ function AddCustomDocumentForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="card space-y-md border border-outline-variant"
-    >
+    <form onSubmit={handleSubmit} className="card space-y-md border border-outline-variant">
       <FormField label="Document name" required>
         <input
           className="input"
@@ -495,9 +655,7 @@ function AddCustomDocumentForm({
 
       <FormField label="File" required>
         <label className="inline-flex items-center gap-sm btn-secondary cursor-pointer text-body-sm">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8 2v9M5 5l3-3 3 3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <Upload size={16} aria-hidden />
           {file ? file.name : "Choose file"}
           <input
             ref={fileInputRef}
@@ -538,8 +696,7 @@ function ProjectsPane({
   onDecline,
   onDrop,
   onStatusChange,
-  currentUid,
-  currentName,
+  onOpenChat,
 }: {
   invites: Array<Invite & { id: string }>;
   projects: Array<Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus }>;
@@ -547,8 +704,7 @@ function ProjectsPane({
   onDecline: (id: string) => void;
   onDrop: (projectId: string, inviteId: string) => Promise<void>;
   onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
-  currentUid: string;
-  currentName: string;
+  onOpenChat: (projectId: string) => void;
 }) {
   const pending = invites.filter((i) => i.status === "pending");
 
@@ -566,12 +722,9 @@ function ProjectsPane({
           <div className="space-y-md">
             {pending.map((invite) => (
               <div key={invite.id} className="card space-y-md">
-                {/* Project info */}
                 <div>
                   <p className="text-label-caps uppercase text-on-surface-variant mb-xs">Project</p>
-                  <p className="text-h2 text-on-surface">
-                    {invite.projectName || "Unnamed Project"}
-                  </p>
+                  <p className="text-h2 text-on-surface">{invite.projectName || "Unnamed Project"}</p>
                   {(invite.projectAddress || invite.projectZip) && (
                     <p className="text-body-sm text-on-surface-variant mt-xs">
                       {[invite.projectAddress, invite.projectZip].filter(Boolean).join(" · ")}
@@ -586,7 +739,6 @@ function ProjectsPane({
 
                 <div className="border-t border-outline-variant" />
 
-                {/* PM contact info */}
                 <div>
                   <p className="text-label-caps uppercase text-on-surface-variant mb-xs">Requested by</p>
                   <p className="text-body-md text-on-surface font-semibold">
@@ -597,25 +749,18 @@ function ProjectsPane({
                   )}
                   <div className="mt-sm flex flex-wrap gap-md">
                     {invite.pmEmail && (
-                      <a
-                        href={`mailto:${invite.pmEmail}`}
-                        className="text-body-sm text-primary hover:underline"
-                      >
+                      <a href={`mailto:${invite.pmEmail}`} className="text-body-sm text-primary hover:underline">
                         {invite.pmEmail}
                       </a>
                     )}
                     {invite.pmPhone && (
-                      <a
-                        href={`tel:${invite.pmPhone}`}
-                        className="text-body-sm text-on-surface-variant hover:text-on-surface"
-                      >
+                      <a href={`tel:${invite.pmPhone}`} className="text-body-sm text-on-surface-variant hover:text-on-surface">
                         {invite.pmPhone}
                       </a>
                     )}
                   </div>
                 </div>
 
-                {/* Note from PM */}
                 {invite.note && (
                   <>
                     <div className="border-t border-outline-variant" />
@@ -626,7 +771,6 @@ function ProjectsPane({
                   </>
                 )}
 
-                {/* Attachments */}
                 {invite.attachmentUrls && invite.attachmentUrls.length > 0 && (
                   <>
                     <div className="border-t border-outline-variant" />
@@ -641,13 +785,9 @@ function ProjectsPane({
                   </>
                 )}
 
-                <div className="flex gap-sm pt-xs">
-                  <button className="btn-primary" onClick={() => onAccept(invite.id)}>
-                    Accept
-                  </button>
-                  <button className="btn-secondary" onClick={() => onDecline(invite.id)}>
-                    Decline
-                  </button>
+                <div className="flex gap-sm pt-xs flex-wrap">
+                  <button className="btn-primary" onClick={() => onAccept(invite.id)}>Accept</button>
+                  <button className="btn-secondary" onClick={() => onDecline(invite.id)}>Decline</button>
                 </div>
               </div>
             ))}
@@ -659,35 +799,50 @@ function ProjectsPane({
       <section>
         <h2 className="text-h2 text-on-surface mb-md">My Projects</h2>
         {projects.length === 0 ? (
-          <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
+          <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant text-center px-md">
             No projects yet. Projects appear after accepting a quote request.
           </div>
         ) : (
-          <div className="border border-outline-variant rounded overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-surface-container">
-                <tr>
-                  <Th>Project</Th>
-                  <Th>Address</Th>
-                  <Th>Project Status</Th>
-                  <Th>My Status</Th>
-                  <Th></Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant">
-                {projects.map((project) => (
-                  <ProjectRow
-                    key={project.id}
-                    project={project}
-                    onDrop={onDrop}
-                    onStatusChange={onStatusChange}
-                    currentUid={currentUid}
-                    currentName={currentName}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Mobile card list */}
+            <div className="sm:hidden space-y-sm">
+              {projects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onDrop={onDrop}
+                  onStatusChange={onStatusChange}
+                  onOpenChat={onOpenChat}
+                />
+              ))}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden sm:block border border-outline-variant rounded overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-surface-container">
+                  <tr>
+                    <Th>Project</Th>
+                    <Th>Address</Th>
+                    <Th>Project Status</Th>
+                    <Th>My Status</Th>
+                    <Th></Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant">
+                  {projects.map((project) => (
+                    <ProjectRow
+                      key={project.id}
+                      project={project}
+                      onDrop={onDrop}
+                      onStatusChange={onStatusChange}
+                      onOpenChat={onOpenChat}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
     </div>
@@ -701,28 +856,131 @@ const VENDOR_STATUS_OPTIONS: { value: VendorProjectStatus; label: string; classe
 ];
 
 function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"
-      className={`transition-transform ${open ? "rotate-180" : ""}`}
-    >
-      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <ChevronDown size={16} aria-hidden className={`transition-transform ${open ? "rotate-180" : ""}`} />;
 }
 
-function ProjectRow({
+// Mobile project card
+function ProjectCard({
   project,
   onDrop,
   onStatusChange,
-  currentUid,
-  currentName,
+  onOpenChat,
 }: {
   project: Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus };
   onDrop: (projectId: string, inviteId: string) => Promise<void>;
   onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
-  currentUid: string;
-  currentName: string;
+  onOpenChat: (projectId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  const statusOption = VENDOR_STATUS_OPTIONS.find((o) => o.value === project.vendorStatus)
+    ?? VENDOR_STATUS_OPTIONS[0];
+
+  async function handleDrop() {
+    setDropping(true);
+    await onDrop(project.id, project.inviteId);
+    setDropping(false);
+    setShowConfirm(false);
+  }
+
+  async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    setUpdatingStatus(true);
+    await onStatusChange(project.id, e.target.value as VendorProjectStatus);
+    setUpdatingStatus(false);
+  }
+
+  return (
+    <div className="border border-outline-variant rounded bg-surface">
+      {/* Card header */}
+      <button
+        className="w-full p-md flex items-center justify-between gap-sm text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className="flex-1 min-w-0">
+          <p className="text-body-md text-on-surface font-semibold truncate">{project.name}</p>
+          {project.address && (
+            <p className="text-body-sm text-on-surface-variant truncate">{project.address}</p>
+          )}
+        </div>
+        <ChevronIcon open={expanded} />
+      </button>
+
+      {/* Status row */}
+      <div className="px-md pb-md flex items-center gap-sm flex-wrap" onClick={(e) => e.stopPropagation()}>
+        {/* Project status pill */}
+        <span className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
+          project.status === "active" ? "bg-green-100 text-green-800" : "bg-surface-container text-on-surface-variant"
+        }`}>
+          {project.status === "active" ? "Active" : "Closed"}
+        </span>
+
+        {/* My status select */}
+        <select
+          value={project.vendorStatus}
+          onChange={handleStatusChange}
+          disabled={updatingStatus}
+          className={`text-body-sm px-sm py-xs rounded font-semibold border-0 cursor-pointer ${statusOption.classes} disabled:opacity-60`}
+        >
+          {VENDOR_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+
+        <button
+          className="text-on-surface-variant hover:text-primary p-xs rounded transition-colors"
+          onClick={() => onOpenChat(project.id)}
+          title="Open chat"
+          aria-label="Open project chat"
+        >
+          <MessageSquare size={18} aria-hidden />
+        </button>
+        <button
+          className="ml-auto text-body-sm text-error hover:underline"
+          onClick={() => setShowConfirm(true)}
+        >
+          Drop
+        </button>
+      </div>
+
+      {/* Drop confirmation */}
+      {showConfirm && (
+        <div className="px-md pb-md pt-sm border-t border-outline-variant bg-error-container">
+          <p className="text-body-md text-on-surface font-semibold mb-xs">Drop "{project.name}"?</p>
+          <p className="text-body-sm text-on-surface-variant mb-md">
+            You will be removed from this project. This cannot be undone.
+          </p>
+          <div className="flex gap-sm flex-wrap">
+            <button
+              className="btn-primary bg-error hover:bg-error text-white"
+              onClick={handleDrop}
+              disabled={dropping}
+            >
+              {dropping ? "Dropping…" : "Yes, drop project"}
+            </button>
+            <button className="btn-secondary" onClick={() => setShowConfirm(false)} disabled={dropping}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Desktop project row
+function ProjectRow({
+  project,
+  onDrop,
+  onStatusChange,
+  onOpenChat,
+}: {
+  project: Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus };
+  onDrop: (projectId: string, inviteId: string) => Promise<void>;
+  onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
+  onOpenChat: (projectId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -757,17 +1015,11 @@ function ProjectRow({
             <span className="text-body-md text-on-surface font-semibold">{project.name}</span>
           </div>
         </td>
-        <td className="px-md py-sm text-body-sm text-on-surface-variant">
-          {project.address}
-        </td>
+        <td className="px-md py-sm text-body-sm text-on-surface-variant">{project.address}</td>
         <td className="px-md py-sm">
-          <span
-            className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
-              project.status === "active"
-                ? "bg-green-100 text-green-800"
-                : "bg-surface-container text-on-surface-variant"
-            }`}
-          >
+          <span className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
+            project.status === "active" ? "bg-green-100 text-green-800" : "bg-surface-container text-on-surface-variant"
+          }`}>
             {project.status === "active" ? "Active" : "Closed"}
           </span>
         </td>
@@ -784,39 +1036,26 @@ function ProjectRow({
           </select>
         </td>
         <td className="px-md py-sm text-right" onClick={(e) => e.stopPropagation()}>
-          <button
-            className="text-body-sm text-error hover:underline"
-            onClick={() => setShowConfirm(true)}
-          >
-            Drop
-          </button>
+          <div className="flex items-center justify-end gap-sm">
+            <button
+              className="text-on-surface-variant hover:text-primary p-xs rounded transition-colors"
+              onClick={() => onOpenChat(project.id)}
+              title="Open chat"
+              aria-label="Open project chat"
+            >
+              <MessageSquare size={18} aria-hidden />
+            </button>
+            <button className="text-body-sm text-error hover:underline" onClick={() => setShowConfirm(true)}>
+              Drop
+            </button>
+          </div>
         </td>
       </tr>
 
-      {/* Expanded chat panel */}
-      {expanded && (
-        <tr key={`${project.id}-chat`}>
-          <td colSpan={5} className="px-lg py-md bg-surface-container-low border-t border-outline-variant">
-            <ProjectChat
-              projectId={project.id}
-              currentUid={currentUid}
-              currentName={currentName}
-              currentRole="vendor"
-            />
-          </td>
-        </tr>
-      )}
-
-      {/* Inline confirmation row */}
       {showConfirm && (
         <tr key={`${project.id}-confirm`}>
-          <td
-            colSpan={5}
-            className="px-lg py-md bg-error-container border-t border-outline-variant"
-          >
-            <p className="text-body-md text-on-surface font-semibold mb-sm">
-              Drop "{project.name}"?
-            </p>
+          <td colSpan={5} className="px-lg py-md bg-error-container border-t border-outline-variant">
+            <p className="text-body-md text-on-surface font-semibold mb-sm">Drop "{project.name}"?</p>
             <p className="text-body-sm text-on-surface-variant mb-md">
               You will be removed from this project. This cannot be undone.
             </p>
@@ -828,11 +1067,7 @@ function ProjectRow({
               >
                 {dropping ? "Dropping…" : "Yes, drop project"}
               </button>
-              <button
-                className="btn-secondary"
-                onClick={() => setShowConfirm(false)}
-                disabled={dropping}
-              >
+              <button className="btn-secondary" onClick={() => setShowConfirm(false)} disabled={dropping}>
                 Cancel
               </button>
             </div>
@@ -859,51 +1094,69 @@ function ClientsPane({
     <div>
       <h2 className="text-h2 text-on-surface mb-md">Property Managers</h2>
       {clients.length === 0 ? (
-        <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant">
+        <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant text-center px-md">
           No clients yet. They'll appear after you accept a project invite.
         </div>
       ) : (
-        <div className="border border-outline-variant rounded overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-surface-container">
-              <tr>
-                <Th>Name</Th>
-                <Th>Email</Th>
-                <Th>Connected Since</Th>
-                <Th>Work Orders</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant">
-              {clients.map((client) => (
-                <tr
-                  key={client.pmUid}
-                  className="bg-surface hover:bg-surface-container-low transition-colors"
-                >
-                  <td className="px-md py-sm text-body-md text-on-surface font-semibold">
-                    {client.displayName}
-                  </td>
-                  <td className="px-md py-sm text-body-sm text-on-surface-variant">
-                    {client.email}
-                  </td>
-                  <td className="px-md py-sm text-body-sm text-on-surface-variant">
-                    {formatDate(client.relationship.firstLinkedAt)}
-                  </td>
-                  <td className="px-md py-sm">
-                    <span
-                      className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
+        <>
+          {/* Mobile card list */}
+          <div className="sm:hidden space-y-sm">
+            {clients.map((client) => (
+              <div key={client.pmUid} className="border border-outline-variant rounded bg-surface p-md space-y-xs">
+                <div className="flex items-start justify-between gap-sm">
+                  <p className="text-body-md text-on-surface font-semibold">{client.displayName}</p>
+                  <span className={`inline-block text-body-sm px-sm py-xs rounded font-semibold flex-shrink-0 ${
+                    client.relationship.workOrdersPaused
+                      ? "bg-error-container text-error"
+                      : "bg-tier-2-bg text-on-surface"
+                  }`}>
+                    {client.relationship.workOrdersPaused ? "Paused" : "Active"}
+                  </span>
+                </div>
+                <a href={`mailto:${client.email}`} className="block text-body-sm text-primary hover:underline">
+                  {client.email}
+                </a>
+                <p className="text-body-sm text-on-surface-variant">
+                  Connected {formatDate(client.relationship.firstLinkedAt)}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block border border-outline-variant rounded overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-surface-container">
+                <tr>
+                  <Th>Name</Th>
+                  <Th>Email</Th>
+                  <Th>Connected Since</Th>
+                  <Th>Work Orders</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant">
+                {clients.map((client) => (
+                  <tr key={client.pmUid} className="bg-surface hover:bg-surface-container-low transition-colors">
+                    <td className="px-md py-sm text-body-md text-on-surface font-semibold">{client.displayName}</td>
+                    <td className="px-md py-sm text-body-sm text-on-surface-variant">{client.email}</td>
+                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                      {formatDate(client.relationship.firstLinkedAt)}
+                    </td>
+                    <td className="px-md py-sm">
+                      <span className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
                         client.relationship.workOrdersPaused
                           ? "bg-error-container text-error"
                           : "bg-tier-2-bg text-on-surface"
-                      }`}
-                    >
-                      {client.relationship.workOrdersPaused ? "Paused" : "Active"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      }`}>
+                        {client.relationship.workOrdersPaused ? "Paused" : "Active"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -926,10 +1179,7 @@ function ProfilePane({
     <div>
       <div className="flex items-center justify-between mb-md">
         <h2 className="text-h2 text-on-surface">Business Profile</h2>
-        <button
-          className="btn-tertiary text-body-sm"
-          onClick={() => setEditing(!editing)}
-        >
+        <button className="btn-tertiary text-body-sm" onClick={() => setEditing(!editing)}>
           {editing ? "Cancel" : "Edit"}
         </button>
       </div>
@@ -945,27 +1195,13 @@ function ProfilePane({
         <div className="card space-y-sm">
           <ProfileRow label="Business name" value={profile.businessName} />
           <ProfileRow label="Business zip" value={profile.businessZipCode} />
-          <ProfileRow
-            label="Service zips"
-            value={profile.serviceZipCodes.join(", ") || "—"}
-          />
-          <ProfileRow
-            label="Categories"
-            value={
-              profile.categories.map(getCategoryLabel).join(", ") || "—"
-            }
-          />
+          <ProfileRow label="Service zips" value={profile.serviceZipCodes.join(", ") || "—"} />
+          <ProfileRow label="Categories" value={profile.categories.map(getCategoryLabel).join(", ") || "—"} />
           <ProfileRow
             label="Discoverable"
-            value={
-              profile.discoverable
-                ? "Yes — visible in search"
-                : "No — hidden from search"
-            }
+            value={profile.discoverable ? "Yes — visible in search" : "No — hidden from search"}
           />
-          {contact && (
-            <ProfileRow label="Phone" value={contact.phone || "—"} />
-          )}
+          {contact && <ProfileRow label="Phone" value={contact.phone || "—"} />}
         </div>
       )}
     </div>
@@ -974,8 +1210,8 @@ function ProfilePane({
 
 function ProfileRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-md">
-      <span className="text-label-caps uppercase text-on-surface-variant w-36 flex-shrink-0">
+    <div className="flex gap-md flex-wrap sm:flex-nowrap">
+      <span className="text-label-caps uppercase text-on-surface-variant w-full sm:w-36 flex-shrink-0">
         {label}
       </span>
       <span className="text-body-md text-on-surface">{value}</span>
@@ -997,12 +1233,8 @@ function ProfileEditForm({
   const [businessName, setBusinessName] = useState(profile.businessName);
   const [phone, setPhone] = useState(contact.phone);
   const [businessZip, setBusinessZip] = useState(profile.businessZipCode);
-  const [serviceZipsRaw, setServiceZipsRaw] = useState(
-    profile.serviceZipCodes.join(", ")
-  );
-  const [categories, setCategories] = useState<ServiceCategory[]>(
-    profile.categories
-  );
+  const [serviceZipsRaw, setServiceZipsRaw] = useState(profile.serviceZipCodes.join(", "));
+  const [categories, setCategories] = useState<ServiceCategory[]>(profile.categories);
   const [discoverable, setDiscoverable] = useState(profile.discoverable);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1041,27 +1273,13 @@ function ProfileEditForm({
   return (
     <form onSubmit={handleSave} className="card space-y-md">
       <FormField label="Business name" required>
-        <input
-          className="input"
-          value={businessName}
-          onChange={(e) => setBusinessName(e.target.value)}
-        />
+        <input className="input" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
       </FormField>
       <FormField label="Phone">
-        <input
-          type="tel"
-          className="input"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
+        <input type="tel" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </FormField>
       <FormField label="Business zip" required>
-        <input
-          className="input"
-          maxLength={5}
-          value={businessZip}
-          onChange={(e) => setBusinessZip(e.target.value)}
-        />
+        <input className="input" maxLength={5} value={businessZip} onChange={(e) => setBusinessZip(e.target.value)} />
       </FormField>
       <FormField label="Service zip codes">
         <input
@@ -1075,7 +1293,7 @@ function ProfileEditForm({
         <p className="text-label-caps uppercase text-on-surface-variant mb-sm">
           Categories <span className="text-error">*</span>
         </p>
-        <div className="grid grid-cols-2 gap-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-xs">
           {SERVICE_CATEGORIES.map((cat) => (
             <label
               key={cat}
@@ -1117,19 +1335,11 @@ function ProfileEditForm({
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: number;
-  accent: string;
-}) {
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
-    <div className="card text-center">
+    <div className="card text-center p-sm sm:p-md">
       <p className={`text-display font-bold ${accent}`}>{value}</p>
-      <p className="text-label-caps uppercase text-on-surface-variant mt-xs">
+      <p className="text-label-caps uppercase text-on-surface-variant mt-xs text-xs sm:text-sm">
         {label}
       </p>
     </div>
@@ -1164,6 +1374,21 @@ function FormField({
   );
 }
 
+// ── Hamburger icon ────────────────────────────────────────────────────────────
+
+function HamburgerIcon({ pendingCount }: { pendingCount: number }) {
+  return (
+    <div className="relative">
+      <Menu size={22} aria-hidden />
+      {pendingCount > 0 && (
+        <span className="absolute -top-1.5 -right-1.5 text-xs bg-error text-white rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+          {pendingCount}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── Root component ────────────────────────────────────────────────────────────
 
 export default function VendorDashboard() {
@@ -1172,6 +1397,8 @@ export default function VendorDashboard() {
   const uid = user?.uid ?? "";
 
   const [tab, setTab] = useState<Tab>("documents");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [chatInitId, setChatInitId] = useState<string | null>(null);
   const [docs, setDocs] = useState<Partial<Record<DocType, VendorDocument>>>({});
   const [customDocs, setCustomDocs] = useState<Array<CustomDocument & { id: string }>>([]);
   const [profile, setProfile] = useState<VendorPublicProfile | null>(null);
@@ -1192,9 +1419,7 @@ export default function VendorDashboard() {
     if (!uid) return;
     return onSnapshot(vendorDocumentsCol(uid), (snap) => {
       const next: Partial<Record<DocType, VendorDocument>> = {};
-      snap.forEach((d) => {
-        next[d.id as DocType] = d.data() as VendorDocument;
-      });
+      snap.forEach((d) => { next[d.id as DocType] = d.data() as VendorDocument; });
       setDocs(next);
     });
   }, [uid]);
@@ -1203,9 +1428,7 @@ export default function VendorDashboard() {
   useEffect(() => {
     if (!uid) return;
     return onSnapshot(customDocumentsCol(uid), (snap) => {
-      setCustomDocs(
-        snap.docs.map((d) => ({ id: d.id, ...(d.data() as CustomDocument) }))
-      );
+      setCustomDocs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as CustomDocument) })));
     });
   }, [uid]);
 
@@ -1250,17 +1473,13 @@ export default function VendorDashboard() {
 
   async function handleAccept(inviteId: string) {
     await acceptInvite(inviteId, uid);
-    setInvites((prev) =>
-      prev.map((i) => (i.id === inviteId ? { ...i, status: "accepted" } : i))
-    );
+    setInvites((prev) => prev.map((i) => (i.id === inviteId ? { ...i, status: "accepted" } : i)));
     getVendorProjects(uid).then(setProjects);
   }
 
   async function handleDecline(inviteId: string) {
     await declineInvite(inviteId);
-    setInvites((prev) =>
-      prev.map((i) => (i.id === inviteId ? { ...i, status: "declined" } : i))
-    );
+    setInvites((prev) => prev.map((i) => (i.id === inviteId ? { ...i, status: "declined" } : i)));
   }
 
   async function handleDropProject(projectId: string, inviteId: string) {
@@ -1271,9 +1490,7 @@ export default function VendorDashboard() {
 
   async function handleUpdateProjectStatus(projectId: string, status: VendorProjectStatus) {
     await updateVendorProjectStatus(projectId, uid, status);
-    setProjects((prev) =>
-      prev.map((p) => (p.id === projectId ? { ...p, vendorStatus: status } : p))
-    );
+    setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, vendorStatus: status } : p)));
   }
 
   async function handleSignOut() {
@@ -1287,31 +1504,43 @@ export default function VendorDashboard() {
     documents: "Profile & Documents",
     projects: "My Projects",
     clients: "Property Managers",
+    messages: "Messages",
   };
 
   return (
-    <div className="flex min-h-screen bg-surface">
+    <div className={`flex bg-surface ${tab === "messages" ? "h-screen overflow-hidden" : "min-h-screen"}`}>
       <Sidebar
         tab={tab}
         setTab={setTab}
         profile={profile}
         pendingCount={pendingCount}
         onSignOut={handleSignOut}
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Page header */}
-        <header className="border-b border-outline-variant bg-surface-container-lowest px-xl py-md flex items-center justify-between">
-          <div>
-            <p className="text-body-sm text-on-surface-variant">
+        <header className="border-b border-outline-variant bg-surface-container-lowest px-md sm:px-xl py-md flex items-center gap-md">
+          {/* Hamburger — mobile only */}
+          <button
+            className="sm:hidden p-xs text-on-surface-variant hover:text-on-surface flex-shrink-0"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
+          >
+            <HamburgerIcon pendingCount={pendingCount} />
+          </button>
+
+          <div className="min-w-0">
+            <p className="text-body-sm text-on-surface-variant truncate hidden sm:block">
               VendorPass → {TAB_TITLES[tab]}
             </p>
-            <h1 className="text-h1 text-on-surface">{TAB_TITLES[tab]}</h1>
+            <h1 className="text-h1 text-on-surface truncate">{TAB_TITLES[tab]}</h1>
           </div>
         </header>
 
         {/* Tab content */}
-        <main className="flex-1 px-xl py-lg max-w-5xl w-full">
+        <main className={`flex-1 min-h-0 ${tab === "messages" ? "overflow-hidden flex flex-col" : "px-md sm:px-xl py-md sm:py-lg max-w-5xl w-full"}`}>
           {tab === "documents" && (
             <div className="space-y-xl">
               {profile && (
@@ -1332,14 +1561,22 @@ export default function VendorDashboard() {
               onDecline={handleDecline}
               onDrop={handleDropProject}
               onStatusChange={handleUpdateProjectStatus}
-              currentUid={uid}
-              currentName={profile?.businessName ?? "Vendor"}
+              onOpenChat={(projectId) => { setChatInitId(projectId); setTab("messages"); }}
             />
           )}
 
           {tab === "clients" && <ClientsPane clients={clients} />}
 
-          <LiabilityFooter />
+          {tab === "messages" && (
+            <MessagesTab
+              currentUid={uid}
+              currentName={profile?.businessName ?? "Vendor"}
+              currentRole="vendor"
+              initialProjectId={chatInitId}
+            />
+          )}
+
+          {tab !== "messages" && <LiabilityFooter />}
         </main>
       </div>
     </div>
@@ -1348,7 +1585,6 @@ export default function VendorDashboard() {
 
 function extractFilename(url: string, fallback: string): string {
   try {
-    // Firebase Storage URLs: …/o/path%2Fencoded%2Ffilename.ext?alt=media…
     const oSegment = url.split("/o/")[1];
     if (oSegment) {
       const decoded = decodeURIComponent(oSegment.split("?")[0]);
@@ -1367,17 +1603,11 @@ function AttachmentPreview({ url, index }: { url: string; index: number }) {
 
   if (isImage) {
     return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block group"
-        aria-label={filename}
-      >
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block group" aria-label={filename}>
         <img
           src={url}
           alt={filename}
-          className="max-h-48 rounded border border-outline-variant object-cover group-hover:opacity-90 transition-opacity"
+          className="max-h-48 w-full object-cover rounded border border-outline-variant group-hover:opacity-90 transition-opacity"
         />
         <p className="text-body-sm text-on-surface-variant mt-xs">{filename}</p>
       </a>
@@ -1391,22 +1621,8 @@ function AttachmentPreview({ url, index }: { url: string; index: number }) {
       rel="noopener noreferrer"
       className="inline-flex items-center gap-xs text-body-sm text-primary hover:underline"
     >
-      <PaperclipIcon />
+      <Paperclip size={13} aria-hidden />
       {filename}
     </a>
-  );
-}
-
-function PaperclipIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
-      <path
-        d="M11 5.5L6 10.5A3 3 0 012 6.5L7.5 1A1.75 1.75 0 0110 3.5L4.5 9A.5.5 0 014 8.5l5-5"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

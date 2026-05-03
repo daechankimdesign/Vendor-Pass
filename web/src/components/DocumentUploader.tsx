@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Upload } from "lucide-react";
 import { ref, uploadBytesResumable } from "firebase/storage";
 import { onSnapshot } from "firebase/firestore";
 import { storage } from "../firebase";
@@ -141,7 +142,7 @@ export default function DocumentUploader({ vendorUid, docType, onComplete }: Pro
       {uploadError && <p className="text-body-sm text-error">{uploadError}</p>}
 
       <label className="inline-flex items-center gap-sm btn-secondary cursor-pointer">
-        <UploadIcon />
+        <Upload size={16} aria-hidden />
         Choose file
         <input
           type="file"
@@ -155,16 +156,3 @@ export default function DocumentUploader({ vendorUid, docType, onComplete }: Pro
   );
 }
 
-function UploadIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 2v9M5 5l3-3 3 3M3 13h10"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}

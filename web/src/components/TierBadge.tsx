@@ -1,3 +1,4 @@
+import { ShieldCheck } from "lucide-react";
 import type { VerificationTier } from "../lib/docTypes";
 
 interface Props {
@@ -42,36 +43,8 @@ export default function TierBadge({ tier, label }: Props) {
   // verified — Tier 3: solid primary-container, white text, shield icon
   return (
     <span className="inline-flex items-center gap-xs px-sm py-xs text-body-sm text-on-primary bg-primary-container rounded whitespace-nowrap">
-      <ShieldCheckIcon />
+      <ShieldCheck size={12} aria-hidden className="flex-shrink-0" />
       {displayLabel}
     </span>
-  );
-}
-
-function ShieldCheckIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden="true"
-      className="flex-shrink-0"
-    >
-      <path
-        d="M6 1L1.5 3v3c0 2.5 1.9 4.3 4.5 5 2.6-.7 4.5-2.5 4.5-5V3L6 1z"
-        stroke="currentColor"
-        strokeWidth="1"
-        fill="currentColor"
-        fillOpacity="0.2"
-      />
-      <path
-        d="M4 6l1.3 1.3L8 4.5"
-        stroke="white"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { X, File, Paperclip, CheckCircle } from "lucide-react";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
 import { getPmProjects, createProject, createInvite } from "../lib/firestore";
@@ -160,7 +161,7 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
             onClick={onClose}
             aria-label="Close"
           >
-            <CloseIcon />
+            <X size={20} aria-hidden />
           </button>
         </div>
 
@@ -168,7 +169,7 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
         {view === "sent" && (
           <div className="space-y-md text-center py-md">
             <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary-container mx-auto">
-              <CheckIcon />
+              <CheckCircle size={28} aria-hidden className="text-on-primary" />
             </div>
             <div>
               <p className="text-h2 text-on-surface">Quote request sent!</p>
@@ -330,7 +331,7 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
                       className="flex items-center justify-between gap-sm p-xs rounded bg-surface-container border border-outline-variant"
                     >
                       <div className="flex items-center gap-xs min-w-0">
-                        <FileIcon />
+                        <File size={14} aria-hidden className="flex-shrink-0 text-on-surface-variant" />
                         <span className="text-body-sm text-on-surface truncate">{file.name}</span>
                         <span className="text-body-sm text-on-surface-variant flex-shrink-0">
                           ({(file.size / 1024).toFixed(0)} KB)
@@ -342,7 +343,7 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
                         onClick={() => removeFile(i)}
                         aria-label="Remove file"
                       >
-                        <CloseIcon size={14} />
+                        <X size={14} aria-hidden />
                       </button>
                     </li>
                   ))}
@@ -354,7 +355,7 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
                 className="btn-secondary text-body-sm flex items-center gap-xs"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <AttachIcon /> Attach files
+                <Paperclip size={14} aria-hidden /> Attach files
               </button>
               <input
                 ref={fileInputRef}
@@ -390,47 +391,3 @@ export default function ProjectPickerModal({ vendorUid, vendorEmail, onClose, on
   );
 }
 
-function CloseIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function FileIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path d="M2 1h7l3 3v9H2V1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M9 1v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function AttachIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path
-        d="M12 6.5L6.5 12A3.5 3.5 0 012 7.5L8 1.5a2 2 0 013 3L5 11a.5.5 0 01-1-1l5.5-5.5"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-      <path
-        d="M6 14l6 6L22 8"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
