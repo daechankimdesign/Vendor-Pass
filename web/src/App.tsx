@@ -15,6 +15,7 @@ import ProjectDetail from "./routes/ProjectDetail";
 import VendorDetail from "./routes/VendorDetail";
 import Admin from "./routes/Admin";
 import Terms from "./routes/Terms";
+import VendorPublicProfile from "./routes/VendorPublicProfile";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/p/:uid" element={<VendorPublicProfile />} />
 
       <Route
         path="/onboard"

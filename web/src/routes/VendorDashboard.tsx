@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Menu, ChevronDown, MessageSquare, Paperclip, Upload, X,
-  FileText, Building2, Users,
+  FileText, Users, BarChart2, CheckCircle2, Clock, UserRound, Share2, Check,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { onSnapshot, getDoc } from "firebase/firestore";
@@ -47,7 +47,7 @@ import MessagesTab from "../components/MessagesTab";
 import { SERVICE_CATEGORIES, getCategoryLabel } from "../lib/categories";
 import type { ServiceCategory } from "../lib/categories";
 
-type Tab = "documents" | "projects" | "clients" | "messages";
+type Tab = "documents" | "business" | "messages";
 
 function formatDate(ts: { seconds: number } | null | undefined): string {
   if (!ts) return "—";
@@ -66,16 +66,14 @@ function isExpired(ts: { seconds: number } | null | undefined): boolean {
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
 const NAV: { id: Tab; label: string; Icon: LucideIcon }[] = [
-  { id: "documents", label: "Profile & Documents", Icon: FileText },
-  { id: "projects", label: "Projects", Icon: Building2 },
-  { id: "clients", label: "Clients", Icon: Users },
+  { id: "business", label: "Dashboard", Icon: BarChart2 },
   { id: "messages", label: "Messages", Icon: MessageSquare },
+  { id: "documents", label: "Profile & Documents", Icon: FileText },
 ];
 
 function Sidebar({
   tab,
   setTab,
-  profile,
   pendingCount,
   onSignOut,
   mobileOpen,
@@ -83,7 +81,6 @@ function Sidebar({
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
-  profile: VendorPublicProfile | null;
   pendingCount: number;
   onSignOut: () => void;
   mobileOpen: boolean;
@@ -123,18 +120,6 @@ function Sidebar({
           </button>
         </div>
 
-        {/* Business info */}
-        {profile && (
-          <div className="px-lg py-md border-b border-outline-variant">
-            <p className="text-body-md text-on-surface font-semibold truncate">
-              {profile.businessName || "Your Business"}
-            </p>
-            <div className="mt-xs">
-              <TierBadge tier={profile.overallTier} />
-            </div>
-          </div>
-        )}
-
         {/* Nav */}
         <nav className="flex-1 px-sm py-md space-y-xs">
           {NAV.map(({ id, label, Icon }) => (
@@ -149,7 +134,7 @@ function Sidebar({
             >
               <Icon size={16} aria-hidden />
               <span className="flex-1">{label}</span>
-              {id === "projects" && pendingCount > 0 && (
+              {id === "business" && pendingCount > 0 && (
                 <span className="text-xs bg-error text-white rounded-full w-5 h-5 flex items-center justify-center font-bold">
                   {pendingCount}
                 </span>
@@ -193,9 +178,9 @@ function DocumentsPane({
     <div className="space-y-lg">
       {/* Stats */}
       <div className="grid grid-cols-3 gap-sm sm:gap-md">
-        <StatCard label="Verified" value={verifiedCount} accent="text-primary" />
-        <StatCard label="Self-Verified" value={selfVerifiedCount} accent="text-on-surface" />
-        <StatCard label="Not Uploaded" value={missingCount} accent="text-on-surface-variant" />
+        <StatCard icon={CheckCircle2} label="Verified" value={verifiedCount} valueColor="text-primary" iconBg="bg-primary/10" iconColor="text-primary" />
+        <StatCard icon={Clock} label="Self-Verified" value={selfVerifiedCount} iconBg="bg-amber-50" iconColor="text-amber-600" />
+        <StatCard icon={FileText} label="Not Uploaded" value={missingCount} valueColor="text-on-surface-variant" iconBg="bg-surface-container" />
       </div>
 
       {/* ── Mobile card list ── */}
@@ -687,11 +672,43 @@ function AddCustomDocumentForm({
   );
 }
 
-// ── Projects tab ──────────────────────────────────────────────────────────────
+// ── Business Dashboard (Projects + Clients merged) ────────────────────────────
 
-function ProjectsPane({
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  valueColor = "text-on-surface",
+  iconBg = "bg-surface-container",
+  iconColor = "text-on-surface-variant",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number | string;
+  sub?: string;
+  valueColor?: string;
+  iconBg?: string;
+  iconColor?: string;
+}) {
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md flex flex-col gap-sm">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">{label}</p>
+        <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center`}>
+          <Icon size={16} className={iconColor} aria-hidden />
+        </div>
+      </div>
+      <p className={`text-3xl font-bold leading-none ${valueColor}`}>{value}</p>
+      {sub && <p className="text-xs text-on-surface-variant">{sub}</p>}
+    </div>
+  );
+}
+
+function BusinessPane({
   invites,
   projects,
+  clients,
   onAccept,
   onDecline,
   onDrop,
@@ -700,6 +717,12 @@ function ProjectsPane({
 }: {
   invites: Array<Invite & { id: string }>;
   projects: Array<Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus }>;
+  clients: Array<{
+    pmUid: string;
+    displayName: string;
+    email: string;
+    relationship: { firstLinkedAt: { seconds: number }; workOrdersPaused: boolean };
+  }>;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
   onDrop: (projectId: string, inviteId: string) => Promise<void>;
@@ -707,15 +730,59 @@ function ProjectsPane({
   onOpenChat: (projectId: string) => void;
 }) {
   const pending = invites.filter((i) => i.status === "pending");
+  const activeProjects = projects.filter((p) => p.status === "active");
+  const completedProjects = projects.filter((p) => p.vendorStatus === "completed");
+  const activeClients = clients.filter((c) => !c.relationship.workOrdersPaused);
+  // Map inviteId → invite so project rows can show the PM name
+  const inviteMap = Object.fromEntries(invites.map((inv) => [inv.id, inv]));
 
   return (
-    <div className="space-y-lg">
-      {/* Pending quote requests */}
+    <div className="space-y-xl">
+
+      {/* ── KPI stats ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-md">
+        <StatCard
+          icon={BarChart2}
+          label="Active Projects"
+          value={activeProjects.length}
+          sub={`${projects.length} total`}
+          valueColor="text-primary"
+          iconBg="bg-primary/10"
+          iconColor="text-primary"
+        />
+        <StatCard
+          icon={Users}
+          label="Property Managers"
+          value={clients.length}
+          sub={`${activeClients.length} active`}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
+        />
+        <StatCard
+          icon={Clock}
+          label="Pending Requests"
+          value={pending.length}
+          sub={pending.length > 0 ? "Needs your response" : "All clear"}
+          valueColor={pending.length > 0 ? "text-error" : "text-on-surface"}
+          iconBg={pending.length > 0 ? "bg-error/10" : "bg-surface-container"}
+          iconColor={pending.length > 0 ? "text-error" : "text-on-surface-variant"}
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label="Completed"
+          value={completedProjects.length}
+          sub="projects wrapped up"
+          iconBg="bg-green-50"
+          iconColor="text-green-600"
+        />
+      </div>
+
+      {/* ── Pending quote requests ── */}
       {pending.length > 0 && (
         <section>
-          <h2 className="text-h2 text-on-surface mb-md">
+          <h2 className="text-h2 text-on-surface mb-md flex items-center gap-sm">
             Quote Requests
-            <span className="ml-sm text-xs bg-error text-white rounded-full px-sm py-xs font-bold">
+            <span className="text-xs bg-error text-white rounded-full px-sm py-xs font-bold">
               {pending.length}
             </span>
           </h2>
@@ -736,9 +803,7 @@ function ProjectsPane({
                     </p>
                   )}
                 </div>
-
                 <div className="border-t border-outline-variant" />
-
                 <div>
                   <p className="text-label-caps uppercase text-on-surface-variant mb-xs">Requested by</p>
                   <p className="text-body-md text-on-surface font-semibold">
@@ -760,7 +825,6 @@ function ProjectsPane({
                     )}
                   </div>
                 </div>
-
                 {invite.note && (
                   <>
                     <div className="border-t border-outline-variant" />
@@ -770,7 +834,6 @@ function ProjectsPane({
                     </div>
                   </>
                 )}
-
                 {invite.attachmentUrls && invite.attachmentUrls.length > 0 && (
                   <>
                     <div className="border-t border-outline-variant" />
@@ -784,7 +847,6 @@ function ProjectsPane({
                     </div>
                   </>
                 )}
-
                 <div className="flex gap-sm pt-xs flex-wrap">
                   <button className="btn-primary" onClick={() => onAccept(invite.id)}>Accept</button>
                   <button className="btn-secondary" onClick={() => onDecline(invite.id)}>Decline</button>
@@ -795,37 +857,41 @@ function ProjectsPane({
         </section>
       )}
 
-      {/* Active projects */}
+      {/* ── Projects ── */}
       <section>
-        <h2 className="text-h2 text-on-surface mb-md">My Projects</h2>
+        <div className="flex items-center justify-between mb-md">
+          <h2 className="text-h2 text-on-surface">Projects</h2>
+          <span className="text-body-sm text-on-surface-variant">{projects.length} total</span>
+        </div>
         {projects.length === 0 ? (
-          <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant text-center px-md">
+          <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded-xl text-body-md text-on-surface-variant text-center px-md">
             No projects yet. Projects appear after accepting a quote request.
           </div>
         ) : (
           <>
-            {/* Mobile card list */}
+            {/* Mobile cards */}
             <div className="sm:hidden space-y-sm">
               {projects.map((project) => (
                 <ProjectCard
                   key={project.id}
                   project={project}
+                  pmName={inviteMap[project.inviteId]?.pmDisplayName}
                   onDrop={onDrop}
                   onStatusChange={onStatusChange}
                   onOpenChat={onOpenChat}
                 />
               ))}
             </div>
-
             {/* Desktop table */}
-            <div className="hidden sm:block border border-outline-variant rounded overflow-hidden">
+            <div className="hidden sm:block border border-outline-variant rounded-xl overflow-hidden">
               <table className="w-full">
                 <thead className="bg-surface-container">
                   <tr>
                     <Th>Project</Th>
+                    <Th>Client</Th>
                     <Th>Address</Th>
-                    <Th>Project Status</Th>
-                    <Th>My Status</Th>
+                    <Th>Status</Th>
+                    <Th>My Progress</Th>
                     <Th></Th>
                   </tr>
                 </thead>
@@ -834,10 +900,95 @@ function ProjectsPane({
                     <ProjectRow
                       key={project.id}
                       project={project}
+                      pmName={inviteMap[project.inviteId]?.pmDisplayName}
                       onDrop={onDrop}
                       onStatusChange={onStatusChange}
                       onOpenChat={onOpenChat}
                     />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* ── Property Managers / Clients ── */}
+      <section>
+        <div className="flex items-center justify-between mb-md">
+          <h2 className="text-h2 text-on-surface">Property Managers</h2>
+          <span className="text-body-sm text-on-surface-variant">{clients.length} connected</span>
+        </div>
+        {clients.length === 0 ? (
+          <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded-xl text-body-md text-on-surface-variant text-center px-md">
+            No clients yet. They'll appear after you accept a project invite.
+          </div>
+        ) : (
+          <>
+            {/* Mobile list */}
+            <div className="sm:hidden space-y-sm">
+              {clients.map((client) => (
+                <div key={client.pmUid} className="border border-outline-variant rounded-xl bg-surface p-md space-y-xs">
+                  <div className="flex items-start justify-between gap-sm">
+                    <div className="flex items-center gap-sm">
+                      <div className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center flex-shrink-0">
+                        <UserRound size={16} className="text-on-surface-variant" aria-hidden />
+                      </div>
+                      <p className="text-body-md text-on-surface font-semibold">{client.displayName}</p>
+                    </div>
+                    <span className={`inline-block text-xs px-sm py-xs rounded-full font-semibold flex-shrink-0 ${
+                      client.relationship.workOrdersPaused ? "bg-error/10 text-error" : "bg-green-100 text-green-800"
+                    }`}>
+                      {client.relationship.workOrdersPaused ? "Paused" : "Active"}
+                    </span>
+                  </div>
+                  <a href={`mailto:${client.email}`} className="block text-body-sm text-primary hover:underline pl-[52px]">
+                    {client.email}
+                  </a>
+                  <p className="text-body-sm text-on-surface-variant pl-[52px]">
+                    Connected {formatDate(client.relationship.firstLinkedAt)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {/* Desktop table */}
+            <div className="hidden sm:block border border-outline-variant rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-surface-container">
+                  <tr>
+                    <Th>Name</Th>
+                    <Th>Email</Th>
+                    <Th>Connected Since</Th>
+                    <Th>Work Orders</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant">
+                  {clients.map((client) => (
+                    <tr key={client.pmUid} className="bg-surface hover:bg-surface-container-low transition-colors">
+                      <td className="px-md py-sm">
+                        <div className="flex items-center gap-sm">
+                          <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center flex-shrink-0">
+                            <UserRound size={14} className="text-on-surface-variant" aria-hidden />
+                          </div>
+                          <span className="text-body-md text-on-surface font-semibold">{client.displayName}</span>
+                        </div>
+                      </td>
+                      <td className="px-md py-sm">
+                        <a href={`mailto:${client.email}`} className="text-body-sm text-primary hover:underline">
+                          {client.email}
+                        </a>
+                      </td>
+                      <td className="px-md py-sm text-body-sm text-on-surface-variant">
+                        {formatDate(client.relationship.firstLinkedAt)}
+                      </td>
+                      <td className="px-md py-sm">
+                        <span className={`inline-block text-xs px-sm py-xs rounded-full font-semibold ${
+                          client.relationship.workOrdersPaused ? "bg-error/10 text-error" : "bg-green-100 text-green-800"
+                        }`}>
+                          {client.relationship.workOrdersPaused ? "Paused" : "Active"}
+                        </span>
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -862,11 +1013,13 @@ function ChevronIcon({ open }: { open: boolean }) {
 // Mobile project card
 function ProjectCard({
   project,
+  pmName,
   onDrop,
   onStatusChange,
   onOpenChat,
 }: {
   project: Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus };
+  pmName?: string;
   onDrop: (projectId: string, inviteId: string) => Promise<void>;
   onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
   onOpenChat: (projectId: string) => void;
@@ -901,9 +1054,13 @@ function ProjectCard({
       >
         <div className="flex-1 min-w-0">
           <p className="text-body-md text-on-surface font-semibold truncate">{project.name}</p>
-          {project.address && (
-            <p className="text-body-sm text-on-surface-variant truncate">{project.address}</p>
-          )}
+          <div className="flex items-center gap-xs flex-wrap">
+            {pmName && <p className="text-body-sm text-primary truncate">{pmName}</p>}
+            {pmName && project.address && <span className="text-on-surface-variant opacity-40 text-body-sm">·</span>}
+            {project.address && (
+              <p className="text-body-sm text-on-surface-variant truncate">{project.address}</p>
+            )}
+          </div>
         </div>
         <ChevronIcon open={expanded} />
       </button>
@@ -973,16 +1130,17 @@ function ProjectCard({
 // Desktop project row
 function ProjectRow({
   project,
+  pmName,
   onDrop,
   onStatusChange,
   onOpenChat,
 }: {
   project: Project & { id: string; inviteId: string; vendorStatus: VendorProjectStatus };
+  pmName?: string;
   onDrop: (projectId: string, inviteId: string) => Promise<void>;
   onStatusChange: (projectId: string, status: VendorProjectStatus) => Promise<void>;
   onOpenChat: (projectId: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -1005,19 +1163,16 @@ function ProjectRow({
 
   return (
     <>
-      <tr
-        className="bg-surface hover:bg-surface-container-low transition-colors cursor-pointer"
-        onClick={() => setExpanded((v) => !v)}
-      >
+      <tr className="bg-surface hover:bg-surface-container-low transition-colors">
         <td className="px-md py-sm">
-          <div className="flex items-center gap-sm">
-            <ChevronIcon open={expanded} />
-            <span className="text-body-md text-on-surface font-semibold">{project.name}</span>
-          </div>
+          <span className="text-body-md text-on-surface font-semibold">{project.name}</span>
         </td>
-        <td className="px-md py-sm text-body-sm text-on-surface-variant">{project.address}</td>
+        <td className="px-md py-sm text-body-sm text-primary font-medium">
+          {pmName ?? <span className="text-on-surface-variant">—</span>}
+        </td>
+        <td className="px-md py-sm text-body-sm text-on-surface-variant">{project.address || "—"}</td>
         <td className="px-md py-sm">
-          <span className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
+          <span className={`inline-block text-xs px-sm py-xs rounded-full font-semibold ${
             project.status === "active" ? "bg-green-100 text-green-800" : "bg-surface-container text-on-surface-variant"
           }`}>
             {project.status === "active" ? "Active" : "Closed"}
@@ -1028,7 +1183,7 @@ function ProjectRow({
             value={project.vendorStatus}
             onChange={handleStatusChange}
             disabled={updatingStatus}
-            className={`text-body-sm px-sm py-xs rounded font-semibold border-0 cursor-pointer ${statusOption.classes} disabled:opacity-60`}
+            className={`text-xs px-sm py-xs rounded-full font-semibold border-0 cursor-pointer ${statusOption.classes} disabled:opacity-60`}
           >
             {VENDOR_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -1043,9 +1198,9 @@ function ProjectRow({
               title="Open chat"
               aria-label="Open project chat"
             >
-              <MessageSquare size={18} aria-hidden />
+              <MessageSquare size={16} aria-hidden />
             </button>
-            <button className="text-body-sm text-error hover:underline" onClick={() => setShowConfirm(true)}>
+            <button className="text-xs text-error hover:underline" onClick={() => setShowConfirm(true)}>
               Drop
             </button>
           </div>
@@ -1054,7 +1209,7 @@ function ProjectRow({
 
       {showConfirm && (
         <tr key={`${project.id}-confirm`}>
-          <td colSpan={5} className="px-lg py-md bg-error-container border-t border-outline-variant">
+          <td colSpan={6} className="px-lg py-md bg-error-container border-t border-outline-variant">
             <p className="text-body-md text-on-surface font-semibold mb-sm">Drop "{project.name}"?</p>
             <p className="text-body-sm text-on-surface-variant mb-md">
               You will be removed from this project. This cannot be undone.
@@ -1078,90 +1233,6 @@ function ProjectRow({
   );
 }
 
-// ── Clients tab ───────────────────────────────────────────────────────────────
-
-function ClientsPane({
-  clients,
-}: {
-  clients: Array<{
-    pmUid: string;
-    displayName: string;
-    email: string;
-    relationship: { firstLinkedAt: { seconds: number }; workOrdersPaused: boolean };
-  }>;
-}) {
-  return (
-    <div>
-      <h2 className="text-h2 text-on-surface mb-md">Property Managers</h2>
-      {clients.length === 0 ? (
-        <div className="flex items-center justify-center h-32 border border-dashed border-outline-variant rounded text-body-md text-on-surface-variant text-center px-md">
-          No clients yet. They'll appear after you accept a project invite.
-        </div>
-      ) : (
-        <>
-          {/* Mobile card list */}
-          <div className="sm:hidden space-y-sm">
-            {clients.map((client) => (
-              <div key={client.pmUid} className="border border-outline-variant rounded bg-surface p-md space-y-xs">
-                <div className="flex items-start justify-between gap-sm">
-                  <p className="text-body-md text-on-surface font-semibold">{client.displayName}</p>
-                  <span className={`inline-block text-body-sm px-sm py-xs rounded font-semibold flex-shrink-0 ${
-                    client.relationship.workOrdersPaused
-                      ? "bg-error-container text-error"
-                      : "bg-tier-2-bg text-on-surface"
-                  }`}>
-                    {client.relationship.workOrdersPaused ? "Paused" : "Active"}
-                  </span>
-                </div>
-                <a href={`mailto:${client.email}`} className="block text-body-sm text-primary hover:underline">
-                  {client.email}
-                </a>
-                <p className="text-body-sm text-on-surface-variant">
-                  Connected {formatDate(client.relationship.firstLinkedAt)}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop table */}
-          <div className="hidden sm:block border border-outline-variant rounded overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-surface-container">
-                <tr>
-                  <Th>Name</Th>
-                  <Th>Email</Th>
-                  <Th>Connected Since</Th>
-                  <Th>Work Orders</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant">
-                {clients.map((client) => (
-                  <tr key={client.pmUid} className="bg-surface hover:bg-surface-container-low transition-colors">
-                    <td className="px-md py-sm text-body-md text-on-surface font-semibold">{client.displayName}</td>
-                    <td className="px-md py-sm text-body-sm text-on-surface-variant">{client.email}</td>
-                    <td className="px-md py-sm text-body-sm text-on-surface-variant">
-                      {formatDate(client.relationship.firstLinkedAt)}
-                    </td>
-                    <td className="px-md py-sm">
-                      <span className={`inline-block text-body-sm px-sm py-xs rounded font-semibold ${
-                        client.relationship.workOrdersPaused
-                          ? "bg-error-container text-error"
-                          : "bg-tier-2-bg text-on-surface"
-                      }`}>
-                        {client.relationship.workOrdersPaused ? "Paused" : "Active"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ── Profile tab ───────────────────────────────────────────────────────────────
 
 function ProfilePane({
@@ -1174,14 +1245,33 @@ function ProfilePane({
   contact: VendorPrivateContact | null;
 }) {
   const [editing, setEditing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function handleShare() {
+    const url = `${window.location.origin}/p/${uid}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-md">
         <h2 className="text-h2 text-on-surface">Business Profile</h2>
-        <button className="btn-tertiary text-body-sm" onClick={() => setEditing(!editing)}>
-          {editing ? "Cancel" : "Edit"}
-        </button>
+        <div className="flex items-center gap-sm">
+          <button
+            onClick={handleShare}
+            className="btn-secondary flex items-center gap-xs text-body-sm"
+            title="Copy shareable profile link"
+          >
+            {copied ? <Check size={14} aria-hidden /> : <Share2 size={14} aria-hidden />}
+            {copied ? "Copied!" : "Share Profile"}
+          </button>
+          <button className="btn-tertiary text-body-sm" onClick={() => setEditing(!editing)}>
+            {editing ? "Cancel" : "Edit"}
+          </button>
+        </div>
       </div>
 
       {editing ? (
@@ -1334,17 +1424,6 @@ function ProfileEditForm({
 }
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
-
-function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
-  return (
-    <div className="card text-center p-sm sm:p-md">
-      <p className={`text-display font-bold ${accent}`}>{value}</p>
-      <p className="text-label-caps uppercase text-on-surface-variant mt-xs text-xs sm:text-sm">
-        {label}
-      </p>
-    </div>
-  );
-}
 
 function Th({ children }: { children?: React.ReactNode }) {
   return (
@@ -1502,8 +1581,7 @@ export default function VendorDashboard() {
 
   const TAB_TITLES: Record<Tab, string> = {
     documents: "Profile & Documents",
-    projects: "My Projects",
-    clients: "Property Managers",
+    business: "Dashboard",
     messages: "Messages",
   };
 
@@ -1512,7 +1590,6 @@ export default function VendorDashboard() {
       <Sidebar
         tab={tab}
         setTab={setTab}
-        profile={profile}
         pendingCount={pendingCount}
         onSignOut={handleSignOut}
         mobileOpen={mobileMenuOpen}
@@ -1553,10 +1630,11 @@ export default function VendorDashboard() {
             </div>
           )}
 
-          {tab === "projects" && (
-            <ProjectsPane
+          {tab === "business" && (
+            <BusinessPane
               invites={invites}
               projects={projects}
+              clients={clients}
               onAccept={handleAccept}
               onDecline={handleDecline}
               onDrop={handleDropProject}
@@ -1564,8 +1642,6 @@ export default function VendorDashboard() {
               onOpenChat={(projectId) => { setChatInitId(projectId); setTab("messages"); }}
             />
           )}
-
-          {tab === "clients" && <ClientsPane clients={clients} />}
 
           {tab === "messages" && (
             <MessagesTab
